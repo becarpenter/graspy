@@ -19,7 +19,7 @@ The documentation for grasp.py and acp.py
 is in the file graspy.pdf
 
 There's a short overview presentation in
-the file GRASP-Prototype.pdf
+the file AN-overview.pdf
 
 The code was tested only on Windows 7 Linux and MacOS so far. In theory,
 the code will work on any host with Winsock2 or Posix compliant TCP/IPv6.
