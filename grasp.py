@@ -8,8 +8,7 @@
 # Module name is 'grasp'
 #                                                     
 # This is a prototype/demo implementation of GRASP in 
-# Python 3.4, based on draft-ietf-anima-grasp-12.txt
-# with updates for the anticipated -13 draft.
+# Python 3.4, based on draft-ietf-anima-grasp-14.txt
 # It is not guaranteed or validated in any way and is 
 # both incomplete and probably wrong. It makes no claim
 # to be production-quality code. Its main purpose is to
@@ -75,7 +74,7 @@
 ########################################################
 ########################################################"""
 
-_version = "13-BC-20170605"
+_version = "14-BC-20170702"
 
 ##########################################################
 # The following change log records significant changes,
