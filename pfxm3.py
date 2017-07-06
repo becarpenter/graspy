@@ -9,6 +9,9 @@
 # 'PrefixManager.Params'. It also supports an ad hoc
 # IPv4 extension.
 #
+# As demonstration code it does not operate in real
+# prefix-assigning nodes or perform real prefix assignments.
+#
 # Released under the BSD 2-Clause "Simplified" or "FreeBSD"
 # License as follows:
 #                                                     
@@ -628,12 +631,13 @@ grasp.tprint("==========================")
 grasp.tprint("ASA pfxm3 is starting up.")
 grasp.tprint("==========================")
 grasp.tprint("pfxm3 is a demonstration Autonomic Service Agent.")
-grasp.tprint("It supports the IPv6 Edge Prefix Management")
+grasp.tprint("It supports the IP Edge Prefix Management")
 grasp.tprint("objective 'PrefixManager' and its companion")
-grasp.tprint("'PrefixManager.Params'. It also supports an")
-grasp.tprint("ad hoc IPv4 extension.")
+grasp.tprint("'PrefixManager.Params', for IPv6 and IPv4.")
 grasp.tprint("")
-grasp.tprint("Supports draft-ietf-anima-prefix-management-04")
+grasp.tprint("Supports draft-ietf-anima-prefix-management-04.")
+grasp.tprint("As demonstration code it does not operate in real")
+grasp.tprint("prefix-assigning nodes or perform real assignments.")
 grasp.tprint("")
 grasp.tprint("On Windows or Linux, after initialisation, there should")
 grasp.tprint("be a nice window showing the negotiation process.")
