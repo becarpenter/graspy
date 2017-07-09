@@ -6,8 +6,7 @@
 # pfxm3 is a demonstration Autonomic Service Agent.
 # It supports the IPv6 Edge Prefix Management
 # objective 'PrefixManager' and its companion
-# 'PrefixManager.Params'. It also supports an ad hoc
-# IPv4 extension.
+# 'PrefixManager.Params' for IPv6 and IPv4.
 #
 # As demonstration code it does not operate in real
 # prefix-assigning nodes or perform real prefix assignments.
