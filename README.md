@@ -5,12 +5,13 @@ This repository is for a Python 3 demonstration implementation of GRASP, the Gen
 
 This code IS NOT INTENDED FOR PRODUCTION USE. See the license and disclaimer in the grasp.py source file.
 
-Status on 2017-07-01:
+Status on 2017-07-21:
 
 These versions use the latest GRASP API with integer error codes.
 INCOMPATIBLE WITH PYTHON GRASP RELEASES BEFORE 2017!
 
-Also the assigned GRASP port number, 7017, is now used.
+Also the assigned GRASP port number, 7017, and the official
+link-local multicast address ff02::13 are now used.
 INCOMPATIBLE WITH ALL PREVIOUS PYTHON GRASP RELEASES!
 
 They are coded in Python 3 and will fail with Python 2.
@@ -21,7 +22,7 @@ is in the file graspy.pdf
 There's a short overview presentation in
 the file AN-overview.pdf
 
-The code was tested only on Windows 7 Linux and MacOS so far. In theory,
+The code was tested only on Windows 7, Linux and MacOS so far. In theory,
 the code will work on any host with Winsock2 or Posix compliant TCP/IPv6.
 When testing ASAs, run each one in a separate instance of Python 3.
 You need to be Administrator (Windows) or su (Linux).
