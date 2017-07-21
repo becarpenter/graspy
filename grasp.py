@@ -74,7 +74,7 @@
 ########################################################
 ########################################################"""
 
-_version = "14-BC-20170702"
+_version = "15-BC-20170721"
 
 ##########################################################
 # The following change log records significant changes,
@@ -126,6 +126,10 @@ _version = "14-BC-20170702"
 # Version 13 improved calculation of discovery timeouts
 
 # 20170604 added initialisation deferral
+
+# Version 15 should conform to RFC-to-be
+
+# 20170721 multicast addresses ff02::13 and 224.0.0.119 assigned
 
 ##########################################################
 
@@ -430,8 +434,8 @@ F_SYNCH = 2   # valid for synchronization
 F_NEG_DRY = 3 # negotiation is dry-run
 
 
-ALL_GRASP_NEIGHBORS_6 = ipaddress.IPv6Address('ff02::114')   # LL multicast (temporary, RFC4727)
-ALL_GRASP_NEIGHBORS_4 = ipaddress.IPv4Address('224.0.0.254') # LL multicast (temporary, RFC4727)
+ALL_GRASP_NEIGHBORS_6 = ipaddress.IPv6Address('ff02::13')   # LL multicast (temporary, RFC4727)
+ALL_GRASP_NEIGHBORS_4 = ipaddress.IPv4Address('224.0.0.119') # LL multicast (temporary, RFC4727)
 GRASP_LISTEN_PORT = 7017 # IANA port number (was 1021, RFC4727)
 GRASP_DEF_TIMEOUT = 60000 # milliseconds
 GRASP_DEF_LOOPCT = 6
@@ -3409,7 +3413,8 @@ def _initialise_grasp():
     print("protocol. It is unsuitable for operational purposes.")
     print("Use it at your own risk!")
     #print("For further details see http://xkcd.com/1742/")
-    print("Version",_version,"released under the simplified BSD license.")
+    print("Python GRASP Version",_version,"released under the")
+    print("simplified BSD license.")
     print("Will use port", GRASP_LISTEN_PORT)
     print("Will use multicast address", ALL_GRASP_NEIGHBORS_6)
 
