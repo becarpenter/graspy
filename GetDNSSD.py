@@ -127,9 +127,10 @@ class negotiator(threading.Thread):
             
             for r in a:
 
-                if sys.getsizeof(reply) > reply_size + 200:
+                #heuristic to fragment before reaching 2000 bytes
+                if len(cbor.dumps(reply)) > reply_size + 1900:
                         #getting big, mark to fragment here
-                        reply_size += 200
+                        reply_size += 1905
                         reply.append('MORE')
                 
                 #extract the name
