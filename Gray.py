@@ -17,7 +17,7 @@ grasp.tprint("then runs indefinitely as one side of a negotiation.")
 grasp.tprint("It acts as a client, asking for money.")
 grasp.tprint("The sum requested is random for each negotiation,")
 grasp.tprint("and some GRASP features are used at random.")
-grasp.tprint("On Windows or Linux, there should be nice window")
+grasp.tprint("On Windows or Linux, there should be a nice window")
 grasp.tprint("that displays the negotiation process.")
 grasp.tprint("========================")
 
