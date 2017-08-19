@@ -74,7 +74,7 @@
 ########################################################
 ########################################################"""
 
-_version = "15-BC-20170819"
+_version = "15-BC-20170820"
 
 ##########################################################
 # The following change log records significant changes,
@@ -834,21 +834,17 @@ def _recvraw(sock):
     """Internal use only"""
     rawmsg, send_addr = sock.recvfrom(GRASP_DEF_MAX_SIZE)
     if len(rawmsg) > 1200: # close to minimum IPv6 MTU
-        #may need to check briefly for a second chunk
+        #need to check briefly for a second chunk
+        ttprint("Raw chunk length",len(rawmsg),"; waiting for more")
+        _to = sock.gettimeout()
+        sock.settimeout(0.2)
         try:
-            cbor.loads(rawmsg)
+            raw2, _ = sock.recvfrom(GRASP_DEF_MAX_SIZE)
+            if len(raw2):
+                rawmsg += raw2
         except:
-            #seems to be incomplete
-            ttprint("Raw chunk length",len(rawmsg),"; waiting for more")
-            _to = sock.gettimeout()
-            sock.settimeout(0.2)
-            try:
-                raw2, _ = sock.recvfrom(GRASP_DEF_MAX_SIZE)
-                if len(raw2):
-                    rawmsg += raw2
-            except:
-                pass #timeout, assume there's nothing more
-            sock.settimeout(_to)
+            pass #timeout, assume there's nothing more
+        sock.settimeout(_to)
         
     return rawmsg, send_addr
 
@@ -2075,6 +2071,8 @@ def tprint(*whatever,ttp=False):
 
     if _dobubbles and not ttp:
         #Queue the text for bubble printing
+        if len(_s) > 200:
+            _s = _s[:200]+' ...' #truncate to fit
         try:
             bubbleQ.put(_s, block=False)
         except:
