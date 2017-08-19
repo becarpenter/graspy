@@ -128,12 +128,20 @@ def get_dns_info(dom):
         time.sleep(5) #to calm things if there's a looping error
     elif (not err) and snonce:
         grasp.ttprint("requested, session_nonce:",snonce,"answer",answer)
+        _found_cbor = False
         if _cbor:
-            answer.value, _ = detag(answer.value)
-        
-        grasp.ttprint("Received reply",answer.value)
+            answer.value, _found_cbor = detag(answer.value)
 
-        if not grasp._prng.randint(0,7):
+        grasp.ttprint("Received reply",answer.value)
+            
+        if _cbor != _found_cbor:
+            #Anomaly, get me out of here
+            grasp.tprint("CBOR anomaly 1 - missing segment?")
+            grasp.end_negotiate(asa_nonce, snonce, False,
+                                reason="CBOR anomaly 1 - missing segment?")        
+
+        elif not grasp._prng.randint(0,7):
+            #######################################################
             # As a random test of robustness, send a bogus response
             answer.value = "rubbish"
             grasp.tprint("Sending rubbish")
@@ -142,14 +150,18 @@ def get_dns_info(dom):
                 answer.value=cbor.dumps(answer.value)                
             err,temp,answer = grasp.negotiate_step(asa_nonce, snonce, answer, 1000)
             grasp.ttprint("Reply to rubbish:", err, temp, answer)
+            _found_cbor = False
             if _cbor and (not err):
-                answer.value, _ = detag(answer.value)
+                answer.value, _found_cbor = detag(answer.value)
             if (not err) and temp==None:
-                grasp.tprint("Unexpected answer:", answer.value)                 
+                grasp.tprint("Unexpected answer:", answer.value)
+            elif (not err) and _cbor != _found_cbor:
+                grasp.tprint("CBOR anomaly 2 - missing segment?")
             elif not err:
                 grasp.tprint("Loop count", answer.loop_count,
                              "unexpected answer", answer.value)
-                err = grasp.end_negotiate(asa_nonce, snonce, False, reason="Unexpected answer")
+                err = grasp.end_negotiate(asa_nonce, snonce, False,
+                                          reason="Unexpected answer")
                 if err:
                     grasp.tprint("end_negotiate error:",grasp.etext[err])
             else:    
@@ -159,8 +171,11 @@ def get_dns_info(dom):
                 else:
                     _e = grasp.etext[err]
                 grasp.tprint("Peer reject:",_e)
+            # End of random test of robustness
+            #######################################################
+            
         else:
-            #accepted answer
+            #Received answer
             looping = True
             while looping:
                 grasp.ttprint("Answer is", answer.value)
@@ -177,7 +192,13 @@ def get_dns_info(dom):
                         grasp.tprint("negotiate_step error:",grasp.etext[err])
                         looping = False
                     elif _cbor:
-                        answer.value, _ = detag(answer.value)                  
+                        answer.value, _found_cbor = detag(answer.value)
+                        if _cbor != _found_cbor:
+                            #anomaly, get me out of here
+                            looping = False
+                            grasp.end_negotiate(asa_nonce, snonce, False,
+                                                reason="CBOR anomaly - missing segment?")
+                            grasp.tprint("CBOR anomaly 3 - missing segment?")
                     grasp.ttprint("Reply to ACK:", err, temp, answer)
                 else:
                     looping = False
