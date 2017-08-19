@@ -50,6 +50,24 @@ import cbor
 
 
 ###################################
+# Support function for CBOR coded
+# objective value
+###################################
+
+def detag(val):
+    """ Decode CBOR if necessary
+        -> decoded_object, was_CBOR"""
+    try:
+        return cbor.loads(val), True
+    except:
+        try:
+            if val.tag == 24:
+                return cbor.loads(answer.value.value), True
+        except:
+            return val, False
+
+
+###################################
 # Function to negotiate as initiator
 # to get DNS records
 ###################################
@@ -62,11 +80,14 @@ def get_dns_info(dom):
     obj3.value = dom
     obj3.loop_count = 10 #allows for some fragmentation
 
-    if not grasp._prng.randint(0,3):
-        _cbor = True # use Tag24 at random
-    else:
-        _cbor = False    
 
+    # As a random test, use CBOR (Tag 24) format for value (should work)
+    if not grasp._prng.randint(0,3):
+        _cbor = True 
+    else:
+        _cbor = False   
+
+    # As a random test, request dry run (should fail)
     if not grasp._prng.randint(0,7):
         obj3.dry = True  # random error for testing purposes
     else:
@@ -108,14 +129,12 @@ def get_dns_info(dom):
     elif (not err) and snonce:
         grasp.ttprint("requested, session_nonce:",snonce,"answer",answer)
         if _cbor:
-            try:
-                answer.value = cbor.loads(answer.value)
-            except:
-                pass
+            answer.value, _ = detag(answer.value)
+        
         grasp.ttprint("Received reply",answer.value)
 
         if not grasp._prng.randint(0,7):
-            # this is all a bogus reaction to test error robustness
+            # As a random test of robustness, send a bogus response
             answer.value = "rubbish"
             grasp.tprint("Sending rubbish")
             if _cbor:
@@ -124,10 +143,7 @@ def get_dns_info(dom):
             err,temp,answer = grasp.negotiate_step(asa_nonce, snonce, answer, 1000)
             grasp.ttprint("Reply to rubbish:", err, temp, answer)
             if _cbor and (not err):
-                try:
-                    answer.value = cbor.loads(answer.value)
-                except:
-                    pass
+                answer.value, _ = detag(answer.value)
             if (not err) and temp==None:
                 grasp.tprint("Unexpected answer:", answer.value)                 
             elif not err:
@@ -147,6 +163,7 @@ def get_dns_info(dom):
             #accepted answer
             looping = True
             while looping:
+                grasp.ttprint("Answer is", answer.value)
                 if 'MORE' in answer.value:
                     #need to go again                
                     reply += answer.value[:answer.value.index('MORE')]
@@ -160,10 +177,7 @@ def get_dns_info(dom):
                         grasp.tprint("negotiate_step error:",grasp.etext[err])
                         looping = False
                     elif _cbor:
-                        try:
-                            answer.value = cbor.loads(answer.value)
-                        except:
-                            pass                    
+                        answer.value, _ = detag(answer.value)                  
                     grasp.ttprint("Reply to ACK:", err, temp, answer)
                 else:
                     looping = False

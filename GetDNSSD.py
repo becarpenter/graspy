@@ -51,6 +51,22 @@ import sys
 import cbor
 import dns.resolver
 
+###################################
+# Support function for CBOR coded
+# objective value
+###################################
+
+def detag(val):
+    """ Decode CBOR if necessary
+        -> decoded_object, was_CBOR"""
+    try:
+        return cbor.loads(val), True
+    except:
+        try:
+            if val.tag == 24:
+                return cbor.loads(answer.value.value), True
+        except:
+            return val, False
 
 ####################################
 # Support functions for negotiator
@@ -85,8 +101,10 @@ def fix_string(s):
                 #replace escape sequence by byte
                 ch = chr(int(p2[0:3]))
             except ValueError:
-                #looks like an isolated backslash, not an escape
-                ch='\\'+p2[0:3]         
+                #looks like an isolated backslash, not a Unicode escape
+                #but we have to leave it in place for SRV lookup
+                #to succeed
+                ch='\\'+p2[0:3]
             r += p1 + ch
             s = p2[3:]
         except ValueError:
@@ -109,12 +127,10 @@ class negotiator(threading.Thread):
         answer=self.nobj
         snonce=self.snonce
         
-        try:
-            answer.value=cbor.loads(answer.value)
+        answer.value, _cbor = detag(answer.value)
+        if _cbor:
             grasp.tprint("CBOR value decoded")
-            _cbor = True
-        except:
-            _cbor = False
+
         grasp.tprint("Got request for", answer.value)
         if answer.dry:
             endit(snonce,"Dry run not supported")
@@ -126,52 +142,62 @@ class negotiator(threading.Thread):
             a = resolve(answer.value,'PTR')
             
             for r in a:
-
-                #heuristic to fragment before reaching 2000 bytes
-                if len(cbor.dumps(reply)) > reply_size + 1900:
-                        #getting big, mark to fragment here
-                        reply_size += 1905
-                        reply.append('MORE')
                 
                 #extract the name
                 raw_name = str(r)
-                name = fix_string(raw_name)
+                #decode Unicode escapes
+                fixed_name = fix_string(raw_name)
+                #remove bogus escapes
+                name = fixed_name.replace("\\","")
                                 
-                grasp.tprint("Got PTR; raw name:",raw_name)
-                grasp.tprint("Name:",name)
+                grasp.tprint("Got PTR name:",name)
+                grasp.ttprint("Raw name:",raw_name)
 
+                #remember where we are in the list
+                reply_mark = len(reply)
+
+                #add RR to reply
                 reply.append('PTR '+ name)
 
                 #look for other records
-                a = resolve(name,'SRV')
+                a = resolve(fixed_name,'SRV')
                 for r in a:
                     srv_reply = []
-                    grasp.tprint("Got SRV", str(r))
+                    grasp.ttprint("Got SRV", str(r))
                     srv_reply.append('SRV '+str(r))
 
                     #parse SRV record to extract the domain
 
                     _,_,_,domain = str(r).split(' ')
-                    grasp.tprint("Got domain", domain)
+                    grasp.ttprint("Got domain", domain)
                     
                     #look for address records
                     a = resolve(domain,'AAAA')
                     for r in a:
-                        grasp.tprint("Got AAAA", str(r))
+                        grasp.ttprint("Got AAAA", str(r))
                         srv_reply.append('AAAA '+str(r))
                     a = resolve(domain,'A')
                     
                     for r in a:
-                        grasp.tprint("Got A", str(r))
+                        grasp.ttprint("Got A", str(r))
                         srv_reply.append('A '+str(r))
 
+                    #add RRs to reply
                     reply.append(srv_reply)
                     
                 a = resolve(name,'TXT')
                 for r in a:
-                    grasp.tprint("Got TXT", str(r))
+                    grasp.ttprint("Got TXT", str(r))
                     #Note that TXT records may include quotes
                     reply.append('TXT '+str(r))
+
+                #fragment before reaching 2000 bytes
+                _l = len(cbor.dumps(reply))
+                if _l > reply_size + 1900:
+                        #getting big, mark to fragment before previous PTR
+                        grasp.tprint("Fragmenting before", _l)
+                        reply_size += (_l + 5)
+                        reply.insert(reply_mark, 'MORE')
                 
             #reply is now a (possibly empty) list of RRs
             if len(reply):      
@@ -208,11 +234,10 @@ class negotiator(threading.Thread):
                 if (not err) and temp==None:
                     grasp.tprint("Reply step succeeded")                 
                 elif not err:
-                    try:
-                        answer.value=cbor.loads(answer.value)
+                    answer.value, _ = detag(answer.value)
+                    if _:
                         grasp.tprint("CBOR value decoded")
-                    except:
-                        pass
+                        
                     if not len(reply):
                         grasp.tprint("Unexpected reply: loop count", answer.loop_count,
                                      "value",answer.value)
