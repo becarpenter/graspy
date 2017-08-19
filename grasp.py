@@ -74,7 +74,7 @@
 ########################################################
 ########################################################"""
 
-_version = "15-BC-20170721"
+_version = "15-BC-20170819"
 
 ##########################################################
 # The following change log records significant changes,
@@ -130,6 +130,8 @@ _version = "15-BC-20170721"
 # Version 15 should conform to RFC-to-be
 
 # 20170721 multicast addresses ff02::13 and 224.0.0.119 assigned
+
+# 20170819 improved handling for long messages
 
 ##########################################################
 
@@ -822,6 +824,36 @@ def deregister_obj(asa_nonce, obj):
 
 ####################################
 #                                  #
+# Support function:                #
+# Receive complete raw message     #
+# from TCP socket.                 #
+#                                  #
+####################################
+
+def _recvraw(sock):
+    """Internal use only"""
+    rawmsg, send_addr = sock.recvfrom(GRASP_DEF_MAX_SIZE)
+    if len(rawmsg) > 1200: # close to minimum IPv6 MTU
+        #may need to check briefly for a second chunk
+        try:
+            cbor.loads(rawmsg)
+        except:
+            #seems to be incomplete
+            ttprint("Raw chunk length",len(rawmsg),"; waiting for more")
+            _to = sock.gettimeout()
+            sock.settimeout(0.2)
+            try:
+                raw2, _ = sock.recvfrom(GRASP_DEF_MAX_SIZE)
+                if len(raw2):
+                    rawmsg += raw2
+            except:
+                pass #timeout, assume there's nothing more
+            sock.settimeout(_to)
+        
+    return rawmsg, send_addr
+
+####################################
+#                                  #
 # Discovery functions              #
 #                                  #
 ####################################
@@ -1139,7 +1171,7 @@ def req_negotiate(asa_nonce, obj, peer, timeout):
         ttprint("Sending req_negotiate to",peer.locator, peer.port)
         sock.connect((str(peer.locator), peer.port,0,_ifi))
         msg_bytes = _ass_message(M_REQ_NEG, neg_sess, None, obj)
-        sock.send(msg_bytes,0)
+        sock.sendall(msg_bytes,0)
     except OSError as ex:
         tprint("Socket error sending negotiation request", ex)
         sock.close()
@@ -1201,13 +1233,13 @@ def negotiate_step(asa_nonce, snonce, obj, timeout):
 
     if _make_invalid:  #this is a special hack for a test case only
         msg_bytes = _ass_message(M_INVALID, neg_sess, "Surprise!")
-        sock.send(msg_bytes,0)
+        sock.sendall(msg_bytes,0)
         _make_invalid = False
                                  
     #now send a negotiate message
     msg_bytes = _ass_message(M_NEGOTIATE, neg_sess, None, obj)
     try:       
-        sock.send(msg_bytes,0)
+        sock.sendall(msg_bytes,0)
     except OSError as ex:
         ttprint("Socket error sending negotiation step", ex)
         sock.close()
@@ -1247,12 +1279,14 @@ def _negloop(snonce, obj, timeout, sock, new_request):
         loopAgain = False  #will loop only if we get a Wait message
         try:
             sock.settimeout(timeout/1000)
-            rawmsg, send_addr = sock.recvfrom(GRASP_DEF_MAX_SIZE)
+            rawmsg, send_addr = _recvraw(sock)
+                    
             if len(rawmsg) == 0:
                 sock.close()
                 _disactivate_session(snonce)
                 return errors.noPeer, None, None
-            #ttprint("negloop: raw reply:", rawmsg)
+                    
+            ttprint("negloop: raw reply:", rawmsg)
             try:
                 payload = cbor.loads(rawmsg)
             except:
@@ -1359,7 +1393,7 @@ def negotiate_wait(asa_nonce, snonce, timeout):
         timeout = GRASP_DEF_TIMEOUT
     msg_bytes = _ass_message(M_WAIT, s.id_value, None, timeout)
     try:
-        sock.send(msg_bytes,0)
+        sock.sendall(msg_bytes,0)
     except OSError as ex:
         ttprint("Socket error sending wait message", ex)
         sock.close()
@@ -1412,7 +1446,7 @@ def end_negotiate(asa_nonce, snonce, result, reason=None):
             end_opt = [O_DECLINE, reason]
     msg_bytes = _ass_message(M_END, s.id_value, None, end_opt)
     try:
-        sock.send(msg_bytes,0)
+        sock.sendall(msg_bytes,0)
         sock.close()
         _disactivate_session(snonce)
     except OSError as ex:
@@ -1650,7 +1684,7 @@ def synchronize(asa_nonce, obj, loc, timeout):
         ttprint("Sending request_syn to",loc.locator,loc.port,_ifi)
         sock.connect((str(loc.locator), loc.port,0,_ifi))
         msg_bytes = _ass_message(M_REQ_SYN, sync_sess, None, obj)
-        sock.send(msg_bytes,0)
+        sock.sendall(msg_bytes,0)
     except OSError as ex:
         tprint("Socket error sending synch request", ex)
         sock.close()
@@ -1659,7 +1693,7 @@ def synchronize(asa_nonce, obj, loc, timeout):
     #now listen for reply
     try:
         sock.settimeout(timeout/1000)
-        rawmsg, send_addr = sock.recvfrom(GRASP_DEF_MAX_SIZE)
+        rawmsg, send_addr = _recvraw(sock)
         sock.close()
         if len(rawmsg) == 0:
             _disactivate_session(snonce)
@@ -1802,7 +1836,7 @@ class _synch_listen(threading.Thread):
                         # send back reply
                         msg_bytes = _ass_message(M_SYNCH, rq[2][_Pl_Ses], None, self.obj)
                         try:
-                            rq[0].send(msg_bytes,0)
+                            rq[0].sendall(msg_bytes,0)
                             ttprint("Sent Synch")
                         except OSError as ex:
                             ttprint("Synch socket failure",ex)
@@ -2828,7 +2862,9 @@ class _drlisten(threading.Thread):
             try:
                 ttprint("Listening for discovery response")
                 asock, aaddr = self.sock.accept()
-                rawmsg, send_addr = asock.recvfrom(GRASP_DEF_MAX_SIZE)
+                # Note - can we safely use _recvraw() here?
+                #rawmsg, send_addr = asock.recvfrom(GRASP_DEF_MAX_SIZE)
+                rawmsg, send_addr = _recvraw(asock)
                 asock.close() 
                 if '%' in aaddr[0]:
                     a,b = aaddr[0].split('%') #strip any Zone ID
@@ -2936,7 +2972,7 @@ class _mchandler(threading.Thread):
                             msg_bytes = _ass_message(M_RESPONSE, msg[_Pl_Ses], msg[_Pl_Ini],
                                                      _ttl, lo)
                             #ttprint("Sending",msg_bytes)
-                            sock.send(msg_bytes,0)
+                            sock.sendall(msg_bytes,0)
                             ttprint("Sent local response")
                         except OSError as ex:
                             tprint("Socket error when sending local discovery Response", ex)
@@ -2996,7 +3032,7 @@ class _mchandler(threading.Thread):
                                     sock.connect((str(from_addr), from_port,0,from_ifi))
                                     msg_bytes = _ass_message(M_RESPONSE, msg[_Pl_Ses], msg[_Pl_Ini],
                                                              _ttl, divo)
-                                    sock.send(msg_bytes,0)
+                                    sock.sendall(msg_bytes,0)
                                     ttprint("Sent divert response")
                                 except OSError as ex:
                                     tprint("Socket error when sending divert Response", ex)
@@ -3109,7 +3145,9 @@ class _tcp_listen(threading.Thread):
                 asock, aaddr = self.listen_sock.accept()
                 asock.set_inheritable(True)
                 ttprint("Talking on",asock.getsockname())
-                rawmsg, send_addr = asock.recvfrom(GRASP_DEF_MAX_SIZE)
+                # Note - can we safely use _recvraw() here?
+                #rawmsg, send_addr = asock.recvfrom(GRASP_DEF_MAX_SIZE)
+                rawmsg, send_addr = _recvraw(asock)
                 if '%' in aaddr[0]:
                     a,b = aaddr[0].split('%') #strip any Zone ID
                 else:
