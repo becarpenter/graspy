@@ -74,11 +74,11 @@
 ########################################################
 ########################################################"""
 
-_version = "15-BC-20170820"
+_version = "15-BC-20170821"
 
 ##########################################################
 # The following change log records significant changes,
-# not bug fixes.
+# not small bug fixes.
 
 # Version 05 added proto/port to discovery responses
 
@@ -2559,22 +2559,28 @@ def _detag_obj(x):
             return x
         _x = x.value.value
         #embedded bytes object, strip CBOR length metadata
+        #(see RFC7049 to understand this)
         if _x[0] in range(0x40,0x57):
+            #4 bit length
+            _l = x[0] & 0x17
             _x = _x[1:]
         elif _x[0] == 0x58:
+            #8 bit length
+            _l = _x[1]
             _x = _x[2:]
         elif _x[0] == 0x59:
+            #16 bit length
+            _l = _x[2]+256*_x[1]
             _x = _x[3:]
         else:
             #lazy code: give up
             return x
+        if len(_x) != _l:
+            #the byte string was truncated or too long
+            grasp.tprint("Corrupt Tag 24 byte string")
+            x.value = b'\xf6' #best we can do is return a CBOR null           
         #now we have plain CBOR, we could try to decode it,
         #but that is better left to the ASA
-##        try:
-##            _x = cbor.loads(_x)
-##        except:
-##            #cannot decode, return it as is
-##            pass
         x.value = _x
     except:
         #no tag, return it as is
