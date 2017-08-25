@@ -8,7 +8,7 @@
 # Module name is 'grasp'
 #                                                     
 # This is a prototype/demo implementation of GRASP in 
-# Python 3.4, based on draft-ietf-anima-grasp-14.txt
+# Python 3.4, based on draft-ietf-anima-grasp-15.txt
 # It is not guaranteed or validated in any way and is 
 # both incomplete and probably wrong. It makes no claim
 # to be production-quality code. Its main purpose is to
@@ -74,7 +74,7 @@
 ########################################################
 ########################################################"""
 
-_version = "15-BC-20170821"
+_version = "15-BC-20170824"
 
 ##########################################################
 # The following change log records significant changes,
@@ -132,6 +132,8 @@ _version = "15-BC-20170821"
 # 20170721 multicast addresses ff02::13 and 224.0.0.119 assigned
 
 # 20170819 improved handling for long messages
+
+# 20170824 added skip_dialogue() to API
 
 ##########################################################
 
@@ -381,6 +383,7 @@ class tagged_objective:
 ####################################
 
 _grasp_initialised = False #true after GRASP core has been initialised
+_skip_dialogue = False     #true if ASA calls grasp.skip_dialogue
 # _tls_required       #true if no ACP
 # _secure             #true if either ACP or TLS is working
 # _rapid_supported    #true if rapid mode allowed
@@ -436,9 +439,9 @@ F_SYNCH = 2   # valid for synchronization
 F_NEG_DRY = 3 # negotiation is dry-run
 
 
-ALL_GRASP_NEIGHBORS_6 = ipaddress.IPv6Address('ff02::13')   # LL multicast (temporary, RFC4727)
-ALL_GRASP_NEIGHBORS_4 = ipaddress.IPv4Address('224.0.0.119') # LL multicast (temporary, RFC4727)
-GRASP_LISTEN_PORT = 7017 # IANA port number (was 1021, RFC4727)
+ALL_GRASP_NEIGHBORS_6 = ipaddress.IPv6Address('ff02::13')   # LL multicast
+ALL_GRASP_NEIGHBORS_4 = ipaddress.IPv4Address('224.0.0.119') # LL multicast
+GRASP_LISTEN_PORT = 7017 # IANA port number
 GRASP_DEF_TIMEOUT = 60000 # milliseconds
 GRASP_DEF_LOOPCT = 6
 GRASP_DEF_MAX_SIZE = 2048 # max message size
@@ -620,6 +623,31 @@ etext = ["OK",
 #                                  #
 ####################################
 
+####################################
+#                                  
+# Tell GRASP to skip initial dialogue
+#                                  
+####################################
+
+def skip_dialogue(testing=False, selfing=False):
+    """
+####################################################################
+# skip_dialogue(testing=False, selfing=False)
+#                                  
+# Tells GRASP to skip initial dialogue
+#
+# Default is not test mode and not listening to own multicasts
+# Must be called before register_asa()
+#
+# No return value                                  
+####################################################################
+"""
+    global _skip_dialogue, test_mode, listen_self, _grasp_initialised
+    if _grasp_initialised:
+        return
+    _skip_dialogue = True
+    test_mode = testing
+    listen_self = selfing
 
 
 def register_asa(asa_name):
@@ -628,6 +656,7 @@ def register_asa(asa_name):
 # register_asa(asa_name)
 #
 # Tells the GRASP engine that a new ASA is starting up.
+# Also triggers GRASP initialisation if needed.
 # 
 # return zero, asa_nonce  if successful
 # return errorcode, None if failure
@@ -3395,6 +3424,7 @@ def dump_all():
         print("Nonce:",'{:8}'.format(x.id_value),"Source:",x.id_source,"Active:",x.id_active,
               "Relayed:",x.id_relayed)
 
+
 def _initialise_grasp():
     """Internal use only """
     #Called the first time register_asa() is called
@@ -3436,6 +3466,7 @@ def _initialise_grasp():
     global _relay_needed
     global _mc_restart
     global _i_sent_it
+    global _skip_dialogue
     global test_mode
     global listen_self
     global test_divert
@@ -3460,35 +3491,37 @@ def _initialise_grasp():
     print("Will use port", GRASP_LISTEN_PORT)
     print("Will use multicast address", ALL_GRASP_NEIGHBORS_6)
 
-    ####################################
-    # Run in test mode?                # 
-    ####################################
+    if not _skip_dialogue:
+    
+        ####################################
+        # Run in test mode?                # 
+        ####################################
 
-    test_mode = False          # Set this True for prolix diagnostic prints
-                               # and some special case tests.
-                               # Leave it False for "production" mode.
-    try:
-        _l = input("Test mode (many extra diagnostics)? Y/N:")
-        if _l:
-            if _l[0] == "Y" or _l[0] == "y":
-                test_mode = True
-    except:
-        pass
+        test_mode = False          # Set this True for prolix diagnostic prints
+                                   # and some special case tests.
+                                   # Leave it False for "production" mode.
+        try:
+            _l = input("Test mode (many extra diagnostics)? Y/N:")
+            if _l:
+                if _l[0] == "Y" or _l[0] == "y":
+                    test_mode = True
+        except:
+            pass
 
-    ####################################
-    # Listen to own LL multicasts?     # 
-    ####################################
+        ####################################
+        # Listen to own LL multicasts?     # 
+        ####################################
 
-    listen_self = False
+        listen_self = False
 
-    try:
-        _l = input("Listen to own multicasts? Y/N:")
-        if _l:
-            if _l[0] == "Y" or _l[0] == "y":
-                listen_self = True
-                ttprint("WARNING: Will listen to own LL multicasts")
-    except:
-        pass
+        try:
+            _l = input("Listen to own multicasts? Y/N:")
+            if _l:
+                if _l[0] == "Y" or _l[0] == "y":
+                    listen_self = True
+                    ttprint("WARNING: Will listen to own LL multicasts")
+        except:
+            pass
         
     ####################################
     # Initialise global variables      #
@@ -3642,8 +3675,14 @@ def _initialise_grasp():
     _grasp_initialised = True
     tprint("GRASP startup function exiting")
 
+####################################
+# Create globals needed for initialisation
+####################################
+
 _print_lock = threading.Lock() # printing might be needed before init!
-test_mode = False              # also used by printing
+test_mode = False              # referenced by skip_dialogue(), used by printing
+listen_self = False            # referenced by skip_dialogue()
+_skip_dialogue = False         # referenced by skip_dialogue()
 _dobubbles = False             # Don't bubble print by default
 bubbleQ = queue.Queue(100)     # Will be used if bubble printing
 
