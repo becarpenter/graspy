@@ -135,6 +135,8 @@ _version = "15-BC-20170824"
 
 # 20170824 added skip_dialogue() to API
 
+# 20170929 added send_invalid() to API
+
 ##########################################################
 
 ####################################
@@ -1257,7 +1259,7 @@ def negotiate_step(asa_nonce, snonce, obj, timeout):
         return errors.loopExhausted, None, None
 
     if _make_invalid:  #this is a special hack for a test case only
-        msg_bytes = _ass_message(M_INVALID, neg_sess, "Surprise!")
+        msg_bytes = _ass_message(M_INVALID, neg_sess, None, "Surprise!")
         sock.sendall(msg_bytes,0)
         _make_invalid = False
                                  
@@ -1480,7 +1482,51 @@ def end_negotiate(asa_nonce, snonce, result, reason=None):
         _disactivate_session(snonce)
         return errors.sockErrEnd
     return errors.ok
-   
+
+
+def send_invalid(asa_nonce, snonce, info="No information"):
+    """
+##############################################################
+# send_invalid(asa_nonce, snonce, info="Diagnostic data")
+#
+# Send invalid message
+#
+# info = optional diagnostic data
+#
+# return zero if successful
+# return errorcode if failure
+#
+# Ends the session abruptly.
+# For use of this see M_INVALID in GRASP specification
+##############################################################
+"""
+    # check that the calling ASA is registered
+    if _no_nonce(asa_nonce):
+        return errors.noASA 
+    # check that GRASP is running securely
+    if not _secure:
+        return errors.noSecurity
+    #verify session
+    s = _get_session(snonce)
+    if not s:
+        return errors.noSession
+    #retrieve the socket
+    sock = s.id_sock
+    if sock == None:
+        return errors.noSocket
+    
+    #now send an invalid message, close the socket etc & return
+    msg_bytes = _ass_message(M_INVALID, s.id_value, None, info)
+    try:
+        sock.sendall(msg_bytes,0)
+        sock.close()
+        _disactivate_session(snonce)
+    except OSError as ex:
+        ttprint("Socket error sending end message", ex)
+        sock.close()
+        _disactivate_session(snonce)
+        return errors.sockErrEnd
+    return errors.ok
 
  
 
