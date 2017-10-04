@@ -18,7 +18,9 @@ class testASA(threading.Thread):
     def run(self):
         time.sleep(1) # avoid printing glitch
         grasp.tprint("WARNING: you can't run this test suite more than once without restarting the Python context; it leaves GRASP data structures dirty!\n")
-        grasp.skip_dialogue(testing=True, selfing=True, checking=True)
+        
+        #global test_divert, test_mode
+        grasp.test_mode = True # tell everybody it's a test
         time.sleep(1) # just to avoid mixed up print output
 
 ####################################
@@ -345,10 +347,6 @@ class Neg2(threading.Thread):
                 elif not err:
                     #not acceptable, try one more time
                     answer2.value[1] = int(0.6*iwant)
-                    #at random, throw an invalid format of message
-                    if not iwant%3:
-                        grasp.tprint("Trying badmess")
-                        grasp._make_badmess = True
                     err,temp,answer3 = grasp.negotiate_step(asa_nonce, snonce, answer2, 1000)
                     grasp.tprint("Step2 gave:", err, temp, answer3)
                     if (not err) and (not temp):
