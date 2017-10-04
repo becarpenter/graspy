@@ -74,7 +74,7 @@
 ########################################################
 ########################################################"""
 
-_version = "15-BC-20170824"
+_version = "15-BC-20171004"
 
 ##########################################################
 # The following change log records significant changes,
@@ -136,6 +136,8 @@ _version = "15-BC-20170824"
 # 20170824 added skip_dialogue() to API
 
 # 20170929 added send_invalid() to API
+
+# 20171003 added inbound message checking option, fixed bug in M_FLOOD format
 
 ##########################################################
 
@@ -403,7 +405,9 @@ _skip_dialogue = False     #true if ASA calls grasp.skip_dialogue
 # test_mode           #True iff module is running in test mode
 # listen_self         #True iff listening to own LL multicasts for testing
 # test_divert         #True to force a divert message from discovery
+# mess_check          #True to trigger strict message checking
 # _make_invalid       #True to throw a test M_INVALID
+# _make_badmess       #True to throw a malformed message
 # _dobubbles          #True to enable bubble printing
 
 
@@ -631,25 +635,27 @@ etext = ["OK",
 #                                  
 ####################################
 
-def skip_dialogue(testing=False, selfing=False):
+def skip_dialogue(testing=False, selfing=False, checking=False):
     """
 ####################################################################
-# skip_dialogue(testing=False, selfing=False)
+# skip_dialogue(testing=False, selfing=False, checking=False)
 #                                  
 # Tells GRASP to skip initial dialogue
 #
 # Default is not test mode and not listening to own multicasts
+# and not fully checking message syntax
 # Must be called before register_asa()
 #
 # No return value                                  
 ####################################################################
 """
-    global _skip_dialogue, test_mode, listen_self, _grasp_initialised
+    global _skip_dialogue, test_mode, listen_self, mess_check, _grasp_initialised
     if _grasp_initialised:
         return
     _skip_dialogue = True
     test_mode = testing
     listen_self = selfing
+    mess_check = checking
 
 
 def register_asa(asa_name):
@@ -1231,6 +1237,7 @@ def negotiate_step(asa_nonce, snonce, obj, timeout):
 ##############################################################
 """
     global _make_invalid
+    global _make_badmess
     
     # check that objective is registered and is owned by
     # the calling ASA
@@ -1262,9 +1269,14 @@ def negotiate_step(asa_nonce, snonce, obj, timeout):
         msg_bytes = _ass_message(M_INVALID, neg_sess, None, "Surprise!")
         sock.sendall(msg_bytes,0)
         _make_invalid = False
+    
                                  
     #now send a negotiate message
-    msg_bytes = _ass_message(M_NEGOTIATE, neg_sess, None, obj)
+    if _make_badmess: #this is a special hack for a test case only
+        msg_bytes = _ass_message(M_NEGOTIATE, neg_sess, None, ["Rubbish"])
+        _make_badmess = False
+    else:
+        msg_bytes = _ass_message(M_NEGOTIATE, neg_sess, None, obj)
     try:       
         sock.sendall(msg_bytes,0)
     except OSError as ex:
@@ -1321,7 +1333,12 @@ def _negloop(snonce, obj, timeout, sock, new_request):
                 _disactivate_session(snonce)
                 return errors.CBORfail, None, None
             ttprint("negloop: CBOR->Python:", payload)
-
+            if not _check_mess(payload):
+                #invalid message, cannot process it
+                tprint("Negotiate_step: invalid message format")
+                sock.close()
+                _disactivate_session(snonce)
+                return errors.noValidStep, None, None
             if payload[_Pl_Ses]==neg_sess and new_request:
                 # first operation for this socket - hang it onto session
                 sess = _get_session(snonce)
@@ -1775,6 +1792,10 @@ def synchronize(asa_nonce, obj, loc, timeout):
         except:
             _disactivate_session(snonce)
             return errors.CBORfail, None
+        if not _check_mess(payload):
+            #invalid message, cannot process it
+            _disactivate_session(snonce)
+            return errors.noValidSynch, None
         ttprint("Synch: CBOR->Python:", payload)
         if payload[_Pl_Msg]==M_SYNCH and payload[_Pl_Ses]==sync_sess:
             #payload[_Pl_Con] is the objective
@@ -2595,10 +2616,13 @@ def _ass_message(msg_type, session_id, initiator, *whatever):
             msg.append(_ass_obj(x))
         elif type(x).__name__ == "list":
             if msg_type == M_FLOOD:
-                _stuff=[]
-                for y in x:                    
-                    _stuff.append([_ass_obj(y[0]),y[1]]) # objective & locator option
-                msg.append(_stuff)
+##                #wrong version - inserted extra level of nesting                
+##                _stuff=[]
+##                for y in x:                    
+##                    _stuff.append([_ass_obj(y[0]),y[1]]) # objective & locator option
+##                msg.append(_stuff)
+                for y in x:
+                    msg.append([_ass_obj(y[0]),y[1]]) # objective & locator option
             else:
                 #lazy code: assume we have a valid embedded option
                 #and insert as-is
@@ -2661,6 +2685,187 @@ def _detag_obj(x):
         #no tag, return it as is
         pass
     return x
+
+def tname(x):
+    """-> name of type of x"""
+    return type(x).__name__
+
+def _check_diag(e):
+    """Internal use only"""
+#########################################
+# Print diagnostic code for invalid syntax
+#########################################
+    global test_mode
+    if test_mode:
+        tprint("Check message error", e)
+
+def _check_obj(obj):
+    """Internal use only"""
+#########################################
+# Check if received objective is in valid
+# format, after CBOR decoding.
+#########################################
+    if tname(obj) != 'list':
+        _check_diag(1)
+        return False #not a list
+    if len(obj) not in (3,4):
+        _check_diag(2)
+        return False #invalid length
+    if tname(obj[0]) != 'str' or \
+       tname(obj[1]) != 'int' or \
+       tname(obj[2]) != 'int':
+        _check_diag(3)
+        return False #wrong type
+    #no rules about the value field, so nothing to check
+    return True
+        
+
+def _check_opt(opt):
+    """Internal use only"""
+#########################################
+# Check if received option is in valid
+# format, after CBOR decoding.
+#########################################
+    if tname(opt) != 'list':
+        _check_diag(4)
+        return False #not a list
+    elif not len(opt):
+        _check_diag(5)
+        return False #zero length
+    if opt[0] == O_DIVERT:
+        if len(opt) < 2 or \
+          tname(opt[1]) != 'list':
+            _check_diag(6)
+            return False 
+        else:
+            #a bit lazy, did not check embedded locator options
+            return True
+    elif opt[0] == O_ACCEPT:
+        return True
+    elif opt[0] == O_DECLINE:
+        if len(opt) == 1:
+            return True
+        elif len(opt) == 2 and tname(opt[1]) == 'str':
+            return True
+        else:
+            _check_diag(7)
+            return False
+    elif opt[0] in (O_IPv6_LOCATOR, O_IPv4_LOCATOR):
+        if len(opt) == 4:
+            if tname(opt[1]) == 'bytes' and \
+               tname(opt[2]) == 'int' and \
+               tname(opt[3]) == 'int':
+                return True
+            else:
+                _check_diag(8)
+                return False
+        else:
+            return False
+    elif opt[0] in (O_FQDN_LOCATOR, O_URI_LOCATOR):
+        if len(opt) == 4:
+            if tname(opt[1]) == 'str' and \
+               (tname(opt[2]) == 'int' or tname(opt[2]) == 'NoneType') and \
+               (tname(opt[3]) == 'int' or tname(opt[3]) == 'NoneType'):
+                _check_diag(9)
+                return True
+            else:
+                _check_diag(10)
+                return False
+        else:
+            _check_diag(11)
+            return False
+    else:
+        _check_diag(12)
+        return False # unknown option
+        
+
+def _check_mess(payload):
+    """Internal use only"""
+#########################################
+# Check if received message is in valid
+# format, after CBOR decoding.
+# Does not check content of options or objectives
+#########################################
+    if not mess_check:
+        return True
+    if tname(payload) != 'list':
+        _check_diag(13)
+        return False #not a list
+    elif not len(payload):
+        _check_diag(14)
+        return False #zero length
+    if payload[0] == M_NOOP:
+        return True
+    elif payload[0] == M_DISCOVERY:
+        if len(payload) != 4 or \
+           tname(payload[1]) != 'int' or \
+           tname(payload[2]) != 'bytes' or \
+           not _check_obj(payload[3]):
+            _check_diag(15)
+            return False
+        else:
+            return True
+    elif payload[0] == M_RESPONSE:
+        if len(payload) < 5 or \
+           tname(payload[1]) != 'int' or \
+           tname(payload[2]) != 'bytes' or \
+           tname(payload[3]) != 'int' or \
+           not _check_opt(payload[4]):
+            _check_diag(16)
+            return False 
+        else:
+            #only checked for minimal content 
+            return True
+    elif payload[0] == M_FLOOD:
+        if len(payload) < 5 or \
+           tname(payload[1]) != 'int' or \
+           tname(payload[2]) != 'bytes' or \
+           tname(payload[3]) != 'int' or \
+           tname(payload[4]) != 'list':
+            _check_diag(17)
+            return False 
+        else:
+            #check embedded tagged objective
+            if len(payload[4]) != 2:
+                _check_diag(18)
+                return False
+            if not _check_obj(payload[4][0]):
+                _check_diag(19)
+                return False
+            if len(payload[4][1]):
+                if not _check_opt(payload[4][1]):
+                    _check_diag(20)
+                    return False
+            #only checked for first content    
+            return True        
+    elif payload[0] in (M_REQ_NEG, M_NEGOTIATE, M_SYNCH, M_REQ_SYN):
+        if len(payload) != 3 or \
+           tname(payload[1]) != 'int' or \
+           not _check_obj(payload[2]):
+            _check_diag(21)
+            return False
+        else:
+            return True
+    elif payload[0] == M_END:
+        if len(payload) !=3 or \
+           tname(payload[1]) != 'int' or \
+           not _check_opt(payload[2]):
+            _check_diag(22)
+            return False
+        else:
+            return True
+    elif payload[0] == M_WAIT:
+        if len(payload) != 3 or \
+           tname(payload[1]) != 'int' or \
+           tname(payload[2]) != 'int':
+            _check_diag(23)
+            return False
+        else:
+            return True
+    else:
+        #unknown message type
+        _check_diag(24)
+        return False
 
 def _try_mcsock(ifi):
     """Internal use only"""
@@ -2763,6 +2968,11 @@ class _mclisten(threading.Thread):
                     except:
                         tprint("Multicast: CBOR decode error")
                         continue
+                    if not _check_mess(payload):
+                        #invalid message, cannot process it
+                        tprint(payload)
+                        tprint("Multicast: Invalid message format")
+                        continue
                     ttprint("Multicast: CBOR->Python:", payload)
                     if payload[_Pl_Msg]==M_DISCOVERY or payload[_Pl_Msg]==M_FLOOD:
                         if _relay_needed:
@@ -2822,7 +3032,9 @@ def _relay(payload, ifi):
     _mtype = payload[_Pl_Msg]
 
     if _mtype == M_FLOOD:
-        obj = payload[_Pl_FCon][0][0] #first objective in flood
+##        #Faulty version with extra level of nesting
+##        obj = payload[_Pl_FCon][0][0] #first objective in flood
+        obj = payload[_Pl_FCon][0] #first objective in flood
         #ttprint("1st obj in flood",obj)
     else:
         obj = payload[_Pl_Dobj] #discovery target
@@ -2954,7 +3166,9 @@ class _drlisten(threading.Thread):
                 try:
                     payload = cbor.loads(rawmsg)
                     ttprint("Received response: CBOR->Python:", payload)
-                    if payload[_Pl_Msg] != M_RESPONSE:
+                    if not _check_mess(payload):
+                        ttprint("Invalid Response message: packet dropped")
+                    elif payload[_Pl_Msg] != M_RESPONSE:
                         ttprint("Not a Response message: packet dropped")
                     else:
                         #find the correct session queue
@@ -3126,7 +3340,9 @@ class _mchandler(threading.Thread):
                 ttprint("Got Flood message")
 
                 try:
-                    lobjs = msg[_Pl_FCon] #list of [objective, locator]
+##                    #Faulty version with extra level of nesting
+##                    lobjs = msg[_Pl_FCon] #list of [objective, locator]
+                    lobjs = msg[_Pl_FCon:] #list of [objective, locator]
                 except:
                     lobjs = [] # invalid, treat it as an empty flood
                     tprint("Flood message has invalid content")
@@ -3236,8 +3452,12 @@ class _tcp_listen(threading.Thread):
                 try:
                     payload = cbor.loads(rawmsg)
                     ttprint("Received request: CBOR->Python:", payload)
-                    if payload[_Pl_Msg] == M_INVALID:
+                    if not _check_mess(payload):
+                        tprint("Invalid Request message: packet dropped")
+                        asock.close()
+                    elif payload[_Pl_Msg] == M_INVALID:
                         tprint("Got M_INVALID", payload[_Pl_Ses],payload[_Pl_Con])
+                        asock.close()
                     elif (payload[_Pl_Msg] != M_REQ_SYN) and (payload[_Pl_Msg] != M_REQ_NEG):
                         ttprint("Not a Request message: packet dropped")
                         asock.close()
@@ -3514,9 +3734,11 @@ def _initialise_grasp():
     global _i_sent_it
     global _skip_dialogue
     global test_mode
+    global mess_check
     global listen_self
     global test_divert
     global _make_invalid
+    global _make_badmess
     global _dobubbles
 
     ####################################
@@ -3551,6 +3773,20 @@ def _initialise_grasp():
             if _l:
                 if _l[0] == "Y" or _l[0] == "y":
                     test_mode = True
+        except:
+            pass
+
+        ####################################
+        # Strict checking ?                # 
+        ####################################
+
+        mess_check = False         # Set this True for detailed format
+                                   # checking for incoming messages
+        try:
+            _l = input("Strict inbound message checking? Y/N:")
+            if _l:
+                if _l[0] == "Y" or _l[0] == "y":
+                    mess_check = True
         except:
             pass
 
@@ -3616,6 +3852,7 @@ def _initialise_grasp():
 
     test_divert = False        # Flip this only inside test ASA, with care
     _make_invalid = False      # For testing M_INVALID, with care
+    _make_badmess = False      # For testing bad message format, with care
                            
     tprint("Initialised global variables, registries and caches.")
 
