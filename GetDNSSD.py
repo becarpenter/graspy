@@ -64,7 +64,7 @@ def detag(val):
     except:
         try:
             if val.tag == 24:
-                return cbor.loads(answer.value.value), True
+                return cbor.loads(val.value), True
         except:
             return val, False
 

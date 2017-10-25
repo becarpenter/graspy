@@ -50,7 +50,7 @@ obj2 = grasp.objective("EX2")
 obj2.loop_count = 4
 obj2.synch = True
 
-err = grasp.register_obj(asa_nonce,obj2)
+err = grasp.register_obj(asa_nonce,obj2,rapid=True)
 if not err:
     grasp.tprint("Objective EX2 registered OK")
 else:
@@ -207,8 +207,11 @@ class negotiator(threading.Thread):
                     if err==grasp.errors.loopExhausted:
                         # we need to signal the end
                         endit(snonce, grasp.etext[err])
+                    elif err==grasp.errors.declined and answer!="":
+                        grasp.tprint("Declined:",answer)
                     else:
                         grasp.tprint("Failed:",grasp.etext[err])
+                        
                 #end of negotiation loop
                 pass
             #out of negotiation loop

@@ -14,6 +14,10 @@ import grasp
 import threading
 import time
 import socket
+try:
+    socket.IPPROTO_IPV6
+except:
+    socket.IPPROTO_IPV6 = 41
 import ipaddress
 
 ###################################
@@ -38,22 +42,25 @@ def dump_some():
 # Function to flood an objective
 ###################################
 
-def floodout(registrar, method):
+def floodout(registrar):
     
-    r_addr = ipaddress.IPv6Address(registrar[1])
-    r_port = registrar[3]
-    grasp.tprint("Chose registrar", r_addr, r_port, method)
+    r_addr = registrar.locator
+    r_port = registrar.port
+    r_proto = registrar.protocol
+    grasp.tprint("Chose registrar", r_addr, r_proto, r_port)
   
     ###################################
-    # Finalise the proxy objective and locator
+    # Finalise the locator
     ###################################
     
-    proxy_obj.value = method
-    proxy_locator.protocol = registrar[2]
-    if method == "BRSKI-TCP":            
+
+    proxy_locator.protocol = registrar.protocol
+    if registrar.protocol == socket.IPPROTO_TCP:            
         proxy_locator.port = t_port
-    elif method == "BRSKI-UDP":        
+    elif registrar.protocol == socket.IPPROTO_UDP:        
         proxy_locator.port = u_port
+    elif registrar.protocol == socket.IPPROTO_IPV6:
+        proxy_locator.port = 0
     else:
         return # unknown method
     
@@ -61,7 +68,7 @@ def floodout(registrar, method):
     # Flood it out for the pledges
     ###################################
     
-    grasp.tprint("Flooding",proxy_obj.name, method)
+    grasp.tprint("Flooding",proxy_obj.name, proxy_locator.protocol, proxy_locator.port)
     grasp.flood(_asa_nonce, proxy_ttl, grasp.tagged_objective(proxy_obj, proxy_locator))
     return
 
@@ -80,7 +87,7 @@ grasp.tprint("the methods it supports, with associated locators,")
 grasp.tprint("as flooded GRASP objectives.")
 grasp.tprint("Then it pretends to generate BRSKI traffic.")
 grasp.tprint("This version corresponds to")
-grasp.tprint("draft-carpenter-anima-ani-objectives-02")
+grasp.tprint("a best guess at what BRSKI really wants")
 grasp.tprint("On Windows or Linux, there should soon be")
 grasp.tprint("a nice window that displays the process.")
 grasp.tprint("==========================")
@@ -112,11 +119,11 @@ else:
 # This is an empty GRASP objective to find the registrar
 # It's only used for synchronize so doesn't need to be filled in
 
-reg_obj = grasp.objective("AN_join_registrar")
+reg_obj = grasp.objective("AN_registrar")
 reg_obj.synch = True
 
 ####################################
-# Create a TCP port for the proxy's communication
+# Create a ports for the proxy's communication
 # with pledges
 ####################################
 
@@ -141,10 +148,11 @@ proxy_locator.is_ipaddress = True
 # Construct the GRASP objective to announce the proxy
 ####################################
 
-proxy_obj = grasp.objective("AN_join_proxy")
+proxy_obj = grasp.objective("AN_proxy")
 proxy_obj.synch = True
+proxy_obj.value = None
 # proxy_obj.loop_count not set, the API forces it to 1 for link-local use
-# proxy_obj.value to be filled in later
+
 
 ####################################
 # Register the GRASP objective
@@ -162,45 +170,34 @@ else:
 ####################################
 
 grasp.init_bubble_text("BRSKI Join Proxy (flooding method)")
+grasp.tprint("Proxy starting now")
 
 ###################################
 # Now find the registrar and pick one or two methods
 ###################################
 
 # Note - this is a simple version that simply takes the
-# first registrar discovered. A more complex version
-# would first use grasp.discover() and then synchronize
-# with one or more discovered registrars.
+# first registrar discovered.
 
 while True:
     registrar1 = None
-    method1 = None
     registrar2 = None
-    _err, _result = grasp.synchronize(_asa_nonce, reg_obj, None, 1000)
+    _err, _result = grasp.discover(_asa_nonce, reg_obj, 1000)
     if not _err:
-        # _result contains the returned objective
-        grasp.tprint("Got",_result.name) #, ":", _result.value)
-        for x in _result.value:
-            # Extract the details (lazy code, no error checking)
-            grasp.ttprint(x[0],ipaddress.IPv6Address(x[1][1]), x[1][2], x[1][3])
-
-            if x[0] == "BRSKI-IPIP":
-                grasp.tprint("IP-in-IP available at",
-                             ipaddress.IPv6Address(x[1][1]))
-                
+        # _result contains the returned locators if any       
+        for x in _result:                
             # use whatever logic you want to decide which results to flood.
             # For the demo code, we just pick one or two at random:
-
-            elif (not registrar1) and grasp._prng.randint(0,2):
-                registrar1 = x[1]
-                method1 = x[0]
+            grasp.tprint("Got",reg_obj.name,"at",x.locator,x.protocol,x.port)
+            if (not registrar1) and grasp._prng.randint(0,2):
+                registrar1 = x
             elif grasp._prng.randint(0,2):
-                if x[0] != method1:
-                    registrar2 = x[1]
-                    method2 = x[0]
+                if x != registrar1:
+                    registrar2 = x
+  
 
     else:
-        grasp.tprint("synchronize failed", grasp.etext[_err])
+        grasp.tprint("Discovery failed", grasp.etext[_err])
 
     ###################################
     # Flood the chosen ones to neighbors
@@ -208,10 +205,10 @@ while True:
     
     if registrar1:
         #grasp.tprint("Floodout1")
-        floodout(registrar1,method1)
+        floodout(registrar1)
         if registrar2:
             #grasp.tprint("Floodout2")
-            floodout(registrar2,method2)
+            floodout(registrar2)
 
         ###################################
         # Listen for a pledge with timeout
@@ -235,7 +232,7 @@ while True:
             # But for the demo, we just pretend...
 
             try:
-                grasp.tprint("Contacting registrar")
+                grasp.tprint("Pretending to contact registrar")
                 # (socket calls etc)
                 # simulate a random failure with a divide-by-zero
                 _= 1/grasp._prng.randint(0,3)

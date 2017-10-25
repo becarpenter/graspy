@@ -14,6 +14,18 @@ import grasp
 import threading
 import time
 import socket
+try:
+    socket.IPPROTO_IPV6
+except:
+    socket.IPPROTO_IPV6 = 41
+
+
+###################################
+# Map protocols to method names
+###################################
+pm={socket.IPPROTO_UDP: "UDP",
+    socket.IPPROTO_TCP: "TCP",
+    socket.IPPROTO_IPV6: "IPIP"}
 
 ###################################
 # Utility routine for debugging:
@@ -47,7 +59,7 @@ grasp.tprint("looking for a Join Assistant (proxy) and the")
 grasp.tprint("methods it supports. Then it pretends to")
 grasp.tprint("generate BRSKI traffic.") 
 grasp.tprint("This version corresponds to")
-grasp.tprint("draft-carpenter-anima-ani-objectives-02")
+grasp.tprint("a best guess at what BRSKI really wants")
 grasp.tprint("On Windows or Linux, there should soon be")
 grasp.tprint("a nice window that displays the process.")
 grasp.tprint("==========================")
@@ -77,11 +89,12 @@ else:
 # This is an empty GRASP objective to find the proxy
 # It's only used for get_flood so doesn't need to be filled in
 
-proxy_obj = grasp.objective("AN_join_proxy")
+proxy_obj = grasp.objective("AN_proxy")
 proxy_obj.synch = True
 
 
 grasp.init_bubble_text("BRSKI Pledge (flooding method)")
+grasp.tprint("Pledge starting now")
 
 ###################################
 # Now find the proxy(s)
@@ -95,12 +108,14 @@ while True:
         grasp.tprint("Found",len(_results),"result(s)")
         for x in _results:
             # Extract the details
-            method = x.objective.value
-            
+            try:
+                x.method = pm[x.source.protocol]
+            except:
+                x.method = "Unknown"            
             # Print the result
             grasp.tprint(x.objective.name, "flooded from", x.source.locator, x.source.protocol,
                         x.source.port,"expiry",x.source.expire,
-                        "method", method)
+                        "method", x.method)
             
             # use whatever logic you want to decide which proxy to use.
             # For the demo code, we randomize somewhat:
@@ -114,7 +129,7 @@ while True:
         p_addr = proxy.source.locator
         p_proto = proxy.source.protocol
         p_port = proxy.source.port
-        p_method = proxy.objective.value
+        p_method = proxy.method
         grasp.tprint("Chose proxy: address", p_addr, "protocol", p_proto,
                      "port", p_port, "method", p_method)
         
@@ -127,7 +142,7 @@ while True:
         # But for the demo, we just pretend...
         
         try:
-            grasp.tprint("Contacting proxy")
+            grasp.tprint("Pretending to contact proxy")
             # (socket calls etc)
             # simulate a random failure with a divide-by-zero
             _= 1/grasp._prng.randint(0,3)

@@ -3,7 +3,8 @@
 
 """This is some demo code showing how a BRSKI registrar would
 provide its contact details to an ANIMA network using GRASP. The
-actual BRSKI transactions are not included.
+actual BRSKI transactions are not included. Corresponds to
+draft-ietf-anima-bootstrapping-keyinfra-??.
 """
 
 import sys
@@ -12,6 +13,10 @@ import grasp
 import threading
 import time
 import socket
+try:
+    socket.IPPROTO_IPV6
+except:
+    socket.IPPROTO_IPV6 = 41
 
 
 ###################################
@@ -45,9 +50,9 @@ grasp.tprint("the methods it supports, with associated locators,")
 grasp.tprint("as synchronized GRASP objectives.")
 grasp.tprint("Then it pretends to wait for BRSKI traffic.")
 grasp.tprint("This version corresponds to")
-grasp.tprint("draft-carpenter-anima-ani-objectives-02")
-grasp.tprint("On Windows or Linux, there should be a nice window")
-grasp.tprint("that displays the process.")
+grasp.tprint("a best guess at what BRSKI really wants")
+grasp.tprint("On Windows or Linux, there should soon be")
+grasp.tprint("a nice window that displays the process.")
 grasp.tprint("==========================")
 
 
@@ -85,10 +90,13 @@ tcp_proto = socket.IPPROTO_TCP
 tcp_address = grasp._my_address # current address determined by GRASP kernel
 
 ####################################
-# Construct a correponding GRASP locator option
+# Construct a correponding GRASP ASA locator
 ####################################
 
-tcp_locator = [grasp.O_IPv6_LOCATOR, tcp_address.packed, tcp_proto, tcp_port]
+tcp_locator = grasp.asa_locator(tcp_address, None, False)
+tcp_locator.protocol = tcp_proto
+tcp_locator.port = tcp_port
+tcp_locator.is_ipaddress = True
 
 ####################################
 # Create a UDP port for BRSKI-UDP
@@ -101,10 +109,13 @@ udp_proto = socket.IPPROTO_UDP
 udp_address = grasp._my_address # current address determined by GRASP kernel
 
 ####################################
-# Construct a correponding GRASP locator option
+# Construct a correponding GRASP ASA locator
 ####################################
 
-udp_locator = [grasp.O_IPv6_LOCATOR, udp_address.packed, udp_proto, udp_port]
+udp_locator = grasp.asa_locator(udp_address, None, False)
+udp_locator.protocol = udp_proto
+udp_locator.port = udp_port
+udp_locator.is_ipaddress = True
 
 ####################################
 # Create a dummy IP-in-IP port for BRSKI-IPIP
@@ -112,15 +123,18 @@ udp_locator = [grasp.O_IPv6_LOCATOR, udp_address.packed, udp_proto, udp_port]
 
 # For this demo, we just make up some numbers:
 
-ipip_port = None
+ipip_port = 0
 ipip_proto = socket.IPPROTO_IPV6
 ipip_address = grasp._my_address # current address determined by GRASP kernel
 
 ####################################
-# Construct a correponding GRASP locator option
+# Construct a correponding GRASP ASA locator
 ####################################
 
-ipip_locator = [grasp.O_IPv6_LOCATOR, ipip_address.packed, ipip_proto, ipip_port]
+ipip_locator = grasp.asa_locator(ipip_address, None, False)
+ipip_locator.protocol = ipip_proto
+ipip_locator.port = ipip_port
+ipip_locator.is_ipaddress = True
 
 ####################################
 # Construct the GRASP objective
@@ -128,18 +142,17 @@ ipip_locator = [grasp.O_IPv6_LOCATOR, ipip_address.packed, ipip_proto, ipip_port
 
 radius = 6    # Limit the radius of discovery
 
-reg_obj = grasp.objective("AN_join_registrar")
+reg_obj = grasp.objective("AN_registrar")
 reg_obj.loop_count = radius
-reg_obj.synch = True    # Because it's synched, not negotiated
-reg_obj.value = [["BRSKI-TCP", tcp_locator],
-                 ["BRSKI-UDP", udp_locator],
-                 ["BRSKI-IPIP", ipip_locator]]
+reg_obj.synch = True    # In fact it's only discovered
+reg_obj.value = None
 
 ####################################
 # Register the GRASP objective
 ####################################
 
-_err = grasp.register_obj(_asa_nonce,reg_obj)
+_err = grasp.register_obj(_asa_nonce,reg_obj,discoverable=True,
+                          locators = [tcp_locator, udp_locator, ipip_locator])
 if not _err:
     grasp.tprint("Objective", reg_obj.name, "registered OK")
 else:
@@ -156,41 +169,42 @@ else:
 ####################################
 
 grasp.init_bubble_text("BRSKI Join Registrar")
+grasp.tprint("Registrar starting now")
 
         
+#####################################
+### Listen for synchronization requests
+### (which makes the objective discoverable)
+#####################################
+##grasp.tprint("Listening for synch:",reg_obj.name)
+##
+### This is a non-blocking call
+##_err = grasp.listen_synchronize(_asa_nonce, reg_obj)
+##if _err:
+##    grasp.tprint("Listen_synch failed:", grasp.etext[_err])
+##else:
+
 ###################################
-# Listen for synchronization requests
-# (which makes the objective discoverable)
+# Listen for requests
 ###################################
-grasp.tprint("Listening for synch:",reg_obj.name)
 
-# This is a non-blocking call
-_err = grasp.listen_synchronize(_asa_nonce, reg_obj)
-if _err:
-    grasp.tprint("Listen_synch failed:", grasp.etext[_err])
-else:
+# Here, launch a thread to do the real work of the registrar
+# via the various ports But for the demo, we just pretend...
+grasp.tprint("Pretending to listen to ports", tcp_port,",", udp_port,
+             "and for IP-in-IP")
+    
 
-    ###################################
-    # Listen for requests
-    ###################################
+###################################
+# Do whatever needs to be done in the main thread
+###################################
 
-    # Here, launch a thread to do the real work of the registrar
-    # via the various ports But for the demo, we just pretend...
-    grasp.tprint("Pretending to listen to ports", tcp_port,",", udp_port,
-                 "and for IP-in-IP")
-        
+# At a minimum, the main thread should keep an eye
+# on the other threads and restart them if needed.
+# For the demo, we just dump some diagnostic data...
 
-    ###################################
-    # Do whatever needs to be done in the main thread
-    ###################################
-
-    # At a minimum, the main thread should keep an eye
-    # on the other threads and restart them if needed.
-    # For the demo, we just dump some diagnostic data...
-
-    while True:
-        time.sleep(30)
-        grasp.tprint("Registrar main loop diagnostic dump:")
-        dump_some()
+while True:
+    time.sleep(30)
+    grasp.tprint("Registrar main loop diagnostic dump:")
+    dump_some()
 
     

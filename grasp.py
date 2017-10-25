@@ -3,7 +3,7 @@
 #                                                     
 # Generic Autonomic Signaling Protocol (GRASP)        
 #                                                     
-# GRASP engine and API                                
+# GRASP engine and API  - Experimental version                              
 #                                                     
 # Module name is 'grasp'
 #                                                     
@@ -26,15 +26,11 @@
 #  - only coded for IPv6, any IPv4 is accidental
 #  - survival of address changes and CPU sleep/wakeup is patchy
 #  - FQDN and URI locators incompletely supported          
-#  - no code for rapid mode                           
+#  - no code for handling rapid mode negotiation                         
 #  - relay code is lazy (no rate control)                            
-#  - all unicast transactions use TCP (no unicast UDP)
-#  - the spec allows an optional Objective option in     
-#      Response messages: not implemented             
-#  - workarounds for defects in Python socket module  
-#      and Windows socket peculiarities. More testing 
-#      on BSD and Linux needed. Not tested on any Apple
-#      device or on Android.
+#  - all unicast transactions use TCP (no unicast UDP)            
+#  - workarounds for defects in Python socket module and
+#    Windows socket peculiarities. Not tested on Android.
 #
 # Released under the BSD 2-Clause "Simplified" or "FreeBSD"
 # License as follows:
@@ -74,7 +70,7 @@
 ########################################################
 ########################################################"""
 
-_version = "15-BC-20171004"
+_version = "15-BC-20171024-EXP"
 
 ##########################################################
 # The following change log records significant changes,
@@ -138,6 +134,14 @@ _version = "15-BC-20171004"
 # 20170929 added send_invalid() to API
 
 # 20171003 added inbound message checking option, fixed bug in M_FLOOD format
+
+# 20171013 replaced inbound checking by full parsing, and use parsed
+#          messages wherever possible
+
+# 20171023 updated _ass_message() to use 'option' class,
+#          added multiple locators to M_RESPONSE and O_DIVERT,
+#          added rapid mode objective to M_RESPONSE
+#          updated register_obj() and synchronize() APIs accordingly
 
 ##########################################################
 
@@ -203,10 +207,19 @@ except:
     time.sleep(10)
     exit()
 
-#Work-around for missing constant in Python socket module on Windows.
-#Isn't it just a stupid language feature that this is allowed???
-if os.name=="nt":
+#work-around for Python system error
+try:
+    socket.IPPROTO_IPV6
+except:
     socket.IPPROTO_IPV6 = 41
+
+#########################################
+# A very handy function...
+#########################################
+
+def tname(x):
+    """-> name of type of x"""
+    return type(x).__name__
 
 ####################################
 #                                  #
@@ -272,9 +285,11 @@ class _registered_objective:
         self.objective = objective
         self.asa_id    = asa_nonce
         self.protocol = socket.IPPROTO_TCP #default
-        self.port = None
+        self.locators = [] #list of explicit locators, if any
+        self.port = 0
         self.discoverable = False # not discoverable until first listening
-        self.local = False # link-local only if True
+        self.local = False # link-local iff True
+        self.rapid = False # support rapid mode iff True
         self.ttl = _discCacheDefTimeOut # discovery cache timeout in milliseconds
         self.listening = 0 # counts active listeners
         self.listen_q = None
@@ -292,8 +307,8 @@ class _discovered_objective:
     """Internal use only"""
     def __init__(self, objective, asa_locators): 
         self.objective = objective      
-        self.asa_locators  = asa_locators
-                                  #asa_locators is a list of asa_locator
+        self.asa_locators  = asa_locators #list of asa_locator
+        self.received = None #objective received in M_RESPONSE
 
 class asa_locator:
     """
@@ -378,6 +393,61 @@ class tagged_objective:
 # with their source address
 
 ####################################
+# Classes for message parsing      #
+####################################
+
+class flooded_objective:
+    """
+An objective embedded in a flood:
+ .obj    the objective
+ .loco   its locator option, or None
+"""
+    def __init__(self, obj, loco):
+        self.obj = obj             #an objective
+        self.loco = loco           #associated locator option
+
+class message:
+    """
+A GRASP message:
+ .mtype         message type, integer
+ .id_value      session ID, integer
+ .id_source     source address (packed)
+ .ttl           ttl or waiting time (ms)
+ .options       list of embedded option
+ .obj           embedded objective
+ .flood_list    list of flooded_objective
+ .content       arbitrary content
+"""
+    def __init__(self, mtype):
+        self.mtype = mtype          #message type, integer
+        self.id_value = 0           #session ID, integer
+        self.id_source = unspec_address.packed #source address
+        self.ttl = 0                #ttl or waiting time, integer
+        self.options = []           #list of options
+        self.obj = None             #embedded objective
+        self.flood_list = None      #list of flooded_objective
+        self.content = None         #arbitrary content
+
+class option:
+    """
+A GRASP option:
+ .otype  option type, integer
+ .embedded  embedded option if any
+ .locator   if locator option: packed address or string
+ .protocol  if locator option: protocol #
+ .port      if locator option: port #
+ .reason    if decline option: reason string
+"""
+    def __init__(self, otype):
+        self.otype = otype          #option type, integer
+        self.embedded = []          #list of embedded options (if any)
+        self.locator = None         #if locator option: packed address
+                                    #or string
+        self.protocol = 0           #if locator option: protocol #
+        self.port = 0               #if locator option: port #
+        self.reason = None          #if decline option: reason string
+
+####################################
 # Other global variables           #
 #                                  #
 # Reminder: any of these that get  #
@@ -405,7 +475,7 @@ _skip_dialogue = False     #true if ASA calls grasp.skip_dialogue
 # test_mode           #True iff module is running in test mode
 # listen_self         #True iff listening to own LL multicasts for testing
 # test_divert         #True to force a divert message from discovery
-# mess_check          #True to trigger strict message checking
+# mess_check          #True to trigger message check diagnostics
 # _make_invalid       #True to throw a test M_INVALID
 # _make_badmess       #True to throw a malformed message
 # _dobubbles          #True to enable bubble printing
@@ -512,6 +582,10 @@ _discTimeoutUnit = 100  # milliseconds (discovery timeout per hop)
 ####################################
 # List offsets for raw message     #
 # contents (for poor man's parsing)#
+#                                  #
+# These constants are used only in #
+# the various _parse_ functions,   #
+# _relay() and _ass_message()      #
 ####################################
 
 _Op_Opt = 0 #option code in an option
@@ -524,9 +598,13 @@ _Pl_Ses = 1 #session ID in a message payload
 _Pl_Ini = 2 #initiator in a message payload
 _Pl_Con = 2 #first specific item in a normal message payload
 _Pl_TTL  = _Pl_Ini+1  #TTL in response or flood payload
-_Pl_Aloc = _Pl_TTL+1  #locator option in response payload
+_Pl_Rloc = _Pl_TTL+1  #locator option in response payload
+_Pl_Robj = _Pl_Rloc+1 #objective in response payload
 _Pl_FCon = _Pl_TTL+1  #list of [locator,objective] in flood payload
 _Pl_Dobj = _Pl_Ini+1  #objective in discovery payload
+
+_Fo_Fobj = 0 #objective in tagged objective in flood
+_Fo_Floc = 1 #locator in tagged objective in flood
 
 _Ob_Nam = 0 #name in an objective
 _Ob_Flg = 1 #flags in an objective
@@ -635,15 +713,15 @@ etext = ["OK",
 #                                  
 ####################################
 
-def skip_dialogue(testing=False, selfing=False, checking=False):
+def skip_dialogue(testing=False, selfing=False, diagnosing=False):
     """
 ####################################################################
-# skip_dialogue(testing=False, selfing=False, checking=False)
+# skip_dialogue(testing=False, selfing=False, diagnosing=False)
 #                                  
 # Tells GRASP to skip initial dialogue
 #
 # Default is not test mode and not listening to own multicasts
-# and not fully checking message syntax
+# and not printing message syntax diagnostics
 # Must be called before register_asa()
 #
 # No return value                                  
@@ -655,7 +733,7 @@ def skip_dialogue(testing=False, selfing=False, checking=False):
     _skip_dialogue = True
     test_mode = testing
     listen_self = selfing
-    mess_check = checking
+    mess_check = diagnosing
 
 
 def register_asa(asa_name):
@@ -747,11 +825,12 @@ def deregister_asa(asa_nonce, asa_name):
 
 
 
-def register_obj(asa_nonce, obj, ttl=None, discoverable=False, overlap=False, local=False):
+def register_obj(asa_nonce, obj, ttl=None, discoverable=False, \
+                 overlap=False, local=False, rapid=False, locators=[]):
     """
 ####################################################################
-# register_obj(asa_nonce, objective,ttl=None
-#              discoverable=False, overlap=False, local=False)
+# register_obj(asa_nonce, objective,ttl=None, discoverable=False,
+#              overlap=False, local=False, locators=[])
 #
 # Store an objective that this ASA supports and may modify.
 #
@@ -769,6 +848,12 @@ def register_obj(asa_nonce, obj, ttl=None, discoverable=False, overlap=False, lo
 # (NOT supported in this implementation.)
 #
 # if local==True, discovery must return a link-local address
+#
+# if rapid==True, supplied value should be used in rapid mode
+# (only works for synchronization)
+#
+# locators is a list of explicit asa_locators, trumping normal
+# discovery
 #
 # The ASA may negotiate the objective or send synch or flood data.
 # (Not needed if the ASA only wants to receive synch or flood data.)
@@ -819,7 +904,9 @@ def register_obj(asa_nonce, obj, ttl=None, discoverable=False, overlap=False, lo
         new_obj.port = listen_port
         new_obj.discoverable = discoverable # whether it can be discovered immediately
         new_obj.local = local # whether it must be assigned a link-local address
-        if type(ttl).__name__ == "int" and ttl>0:
+        new_obj.rapid = rapid # whether it should support rapid mode
+        new_obj.locators = locators
+        if tname(ttl) == "int" and ttl>0:
             new_obj.ttl = ttl
         _obj_registry.append(new_obj)
         _obj_lock.release()
@@ -1024,13 +1111,13 @@ def discover(asa_nonce, obj, timeout, flush=False, relay_ifi=False, relay_snonce
                 dr = _drq.get(block=True, timeout=tleft)
             else:
                 dr = _drq.get(block=False)
-            payload = dr[2]
-            ttprint("Got a discovery response",payload)
-            #ttprint(payload[_Pl_Ses], disc_sess)
-            if (payload[_Pl_Ses] == disc_sess) and (payload[_Pl_Ini] == _sloc):
+            msg = dr[2]
+            ttprint("Got a discovery response",msg)
+            #ttprint(msg.id_value, disc_sess)
+            if (msg.id_value == disc_sess) and (msg.id_source == _sloc):
                 #it belongs here
                 #strip it down to an option list and process it                
-                _drloop(dr[1],payload[_Pl_TTL],payload[_Pl_Aloc:],obj,False)
+                _drloop(dr[1], msg.ttl, msg.options, msg.obj, obj, False)
             else:
                 #response reached wrong queue
                 tprint("Discovery response to wrong session")
@@ -1061,7 +1148,7 @@ def discover(asa_nonce, obj, timeout, flush=False, relay_ifi=False, relay_snonce
 
 
 
-def _drloop(ifi,ttl,payload,obj,inDivert):
+def _drloop(ifi,ttl,options,rec_obj,obj,inDivert):
     """Internal use only"""
 ##################################
 # internal function for discover()
@@ -1069,35 +1156,27 @@ def _drloop(ifi,ttl,payload,obj,inDivert):
 # the relevant objective.
 # recurse when Divert found
 ##################################
-    #payload is a list of GRASP options
-    #how many options are present?
+    #options is a list of grasp.option
     ttprint("Entering drloop")
-    nopts = len(payload)
-    #ttprint("nopts", nopts)
     #ttprint("payload", payload)
-    for i in range(nopts):
-        opti = payload[i]
-        if opti[_Op_Opt] == O_DIVERT:
+    for opti in options:
+        if opti.otype == O_DIVERT:
             ttprint("drloop got a Divert option")
-            #strip the option code and recurse
-            _drloop(ifi,ttl,opti[_Op_Con:],obj,True)
+            #recurse on embedded list of options
+            _drloop(ifi, ttl, opti.embedded, None, obj, True)
             #ttprint("back from recursion")
-        elif opti[_Op_Opt] == O_URI_LOCATOR:
-            aloc = asa_locator(opti[_Op_Con],ifi,inDivert)
-            aloc.is_uri = True
         else:
-            if opti[_Op_Opt] == O_IPv4_LOCATOR or opti[_Op_Opt] == O_IPv6_LOCATOR:
-                aloc = asa_locator(ipaddress.ip_address(opti[_Op_Con]), ifi, inDivert)
-                aloc.is_ipaddress = True
-            elif opti[_Op_Opt] == O_FQDN_LOCATOR:
-                aloc = asa_locator(opti[_Op_Con],ifi,inDivert)
-                aloc.is_fqdn = True
+            alocs = _opt_to_asa_loc(opti, ifi, inDivert)
+            if len(alocs) == 1:
+                aloc = alocs[0]
+            else:
+                tprint("Anomalous locator option in drloop")
                 
         #if we have something, complete the ASA locator
         #and add it to discovery cache entry for obj
         if 'aloc' in locals():
-            aloc.protocol = opti[_Op_Proto]
-            aloc.port = opti[_Op_Port]
+            aloc.protocol = opti.protocol
+            aloc.port = opti.port
             aloc.expire = int(time.monotonic() + ttl/1000)
             found = False
             _disc_lock.acquire()
@@ -1105,6 +1184,7 @@ def _drloop(ifi,ttl,payload,obj,inDivert):
                 if x.objective.name == obj.name:
                     ttprint("Adding locator to discovery cache")
                     x.asa_locators.append(aloc)
+                    x.received = rec_obj
                     found = True
                     break
             if not found:
@@ -1113,7 +1193,9 @@ def _drloop(ifi,ttl,payload,obj,inDivert):
                 #but first, check length and garbage collect
                 if len(_discovery_cache) >= _discCacheLimit:
                     del(_discovery_cache[0]) #delete Least Recently Used
-                _discovery_cache.append(_discovered_objective(obj,[aloc]))
+                _new_do = _discovered_objective(obj,[aloc])
+                _new_do.received = rec_obj
+                _discovery_cache.append(_new_do)
             _disc_lock.release()
 
 
@@ -1333,13 +1415,15 @@ def _negloop(snonce, obj, timeout, sock, new_request):
                 _disactivate_session(snonce)
                 return errors.CBORfail, None, None
             ttprint("negloop: CBOR->Python:", payload)
-            if not _check_mess(payload):
+            msg = _parse_msg(payload)
+            if not msg:
                 #invalid message, cannot process it
                 tprint("Negotiate_step: invalid message format")
                 sock.close()
                 _disactivate_session(snonce)
                 return errors.noValidStep, None, None
-            if payload[_Pl_Ses]==neg_sess and new_request:
+
+            if msg.id_value == neg_sess and new_request:
                 # first operation for this socket - hang it onto session
                 sess = _get_session(snonce)
                 if not sess:
@@ -1347,19 +1431,15 @@ def _negloop(snonce, obj, timeout, sock, new_request):
                 sess.id_sock = sock
                 _update_session(sess)
                 
-            if payload[_Pl_Msg]==M_INVALID:
-                tprint("Got M_INVALID", payload[_Pl_Ses],payload[_Pl_Con])
-            elif payload[_Pl_Msg]==M_NEGOTIATE and payload[_Pl_Ses]==neg_sess:
+            if msg.mtype == M_INVALID:
+                tprint("Got M_INVALID", msg.id_value, msg.content)
+            elif msg.mtype == M_NEGOTIATE and msg.id_value == neg_sess:
                 ttprint("negloop: got NEGOTIATE")
-                #payload[_Pl_Con] is the objective
-                rec_obj = objective(payload[_Pl_Con][_Ob_Nam]) #the name
-                _f = payload[_Pl_Con][_Ob_Flg]
-                rec_obj.neg, rec_obj.synch, rec_obj.dry = _flags(_f)
+                rec_obj = msg.obj
                 if rec_obj.dry:
                     ttprint("Received Dry")
                 #decrement loop count
-                rec_obj.loop_count = payload[_Pl_Con][_Ob_LCt]-1
-                rec_obj.value = payload[_Pl_Con][_Ob_Val]
+                rec_obj.loop_count -= 1
                 rec_obj = _detag_obj(rec_obj)
                 if (rec_obj.name == obj.name) and (rec_obj.neg == True):
                     return errors.ok, snonce, rec_obj #session and socket still open
@@ -1368,23 +1448,20 @@ def _negloop(snonce, obj, timeout, sock, new_request):
                     _disactivate_session(snonce)
                     return errors.invalidNeg, None, None
                 
-            elif payload[_Pl_Msg]==M_WAIT and payload[_Pl_Ses]==neg_sess:
+            elif msg.mtype == M_WAIT and msg.id_value == neg_sess:
                 ttprint("negloop: got WAIT")
-                timeout = payload[_Pl_Con]
+                timeout = msg.ttl
                 loopAgain = True  #what we really want here is a GOTO
                 
-            elif payload[_Pl_Msg]==M_END and payload[_Pl_Ses]==neg_sess:
+            elif msg.mtype == M_END and msg.id_value == neg_sess:
                 ttprint("Negotiate_step: got END")
                 # we're done
                 sock.close()
                 _disactivate_session(snonce)
-                if payload[_Pl_Con][_Op_Opt] == O_ACCEPT:
+                if msg.options[0].otype == O_ACCEPT:
                     return errors.ok, None, obj
-                elif payload[_Pl_Con][_Op_Opt] == O_DECLINE:
-                    if len(payload[_Pl_Con])>1:                     
-                        return errors.declined, None, payload[_Pl_Con][_Op_Con] #copy error message
-                    else:
-                        return errors.declined, None, "" #no reason given
+                elif msg.options[0].otype == O_DECLINE:
+                    return errors.declined, None, msg.options[0].reason
                 else:
                     return errors.invalidEnd, None, None
             else:
@@ -1482,13 +1559,12 @@ def end_negotiate(asa_nonce, snonce, result, reason=None):
     
     #now send an end message, close the socket etc & return
     if result:
-        end_opt = [O_ACCEPT]
+        end_opt = option(O_ACCEPT)
     else:
-        if reason == None:
-            end_opt = [O_DECLINE]
-        else:
-            end_opt = [O_DECLINE, reason]
-    msg_bytes = _ass_message(M_END, s.id_value, None, end_opt)
+        end_opt = option(O_DECLINE)
+        end_opt.reason = reason
+        ttprint("Set decline reason:",end_opt.reason)
+    msg_bytes = _ass_message(M_END, s.id_value, None, [end_opt])
     try:
         sock.sendall(msg_bytes,0)
         sock.close()
@@ -1614,8 +1690,8 @@ def listen_negotiate(asa_nonce, obj):
 
 
     # get next request from queue
-    # what we find in the queue is [asock,send_addr,payload]
-    # payload is a Request Neg message
+    # what we find in the queue is [asock,send_addr,message]
+    # message is a Request Neg message
     # asock is a connected TCP socket
 
     # we block here until a request arrives
@@ -1634,7 +1710,7 @@ def listen_negotiate(asa_nonce, obj):
     del q
     
     #build the session instance and nonce
-    s_id = rq[2][_Pl_Ses]
+    s_id = rq[2].id_value
     s_source = rq[1]
     s_nonce = _session_nonce(s_id,s_source.packed)
     #cache remote session along with socket
@@ -1643,13 +1719,9 @@ def listen_negotiate(asa_nonce, obj):
     if _insert_session(news, _check_race = not test_mode):
         #(we bypass the race condition check iff in test mode)
         #return proffered objective to caller
-        prof_obj = objective(rq[2][_Pl_Con][_Ob_Nam])
-        _f = rq[2][_Pl_Con][_Ob_Flg]
-        prof_obj.neg, prof_obj.synch, prof_obj.dry = _flags(_f)
+        prof_obj = rq[2].obj
         if prof_obj.dry:
             ttprint("Received Dry Request")   
-        prof_obj.loop_count = rq[2][_Pl_Con][_Ob_LCt]
-        prof_obj.value = rq[2][_Pl_Con][_Ob_Val]
         return errors.ok, s_nonce, _detag_obj(prof_obj)  # Negotiation starting
     else:
         # race condition clash between s_id and an existing session
@@ -1709,7 +1781,10 @@ def synchronize(asa_nonce, obj, loc, timeout):
 # the first flooded value in the cache is returned.
 # 
 # Otherwise, synchronization with a discovered ASA is performed.
-# In that case, if the locator is None, discovery is performed first. 
+# In that case, if the locator is None, discovery is performed first
+# unless the objective is in the discovery cache already.
+# If the discovery response provided a rapid mode objective,
+# synchronization is skipped and that objective is returned
 #
 # This call should be repeated whenever the value is needed.
 # Call in a separate thread if asynchronous operation required.
@@ -1758,6 +1833,16 @@ def synchronize(asa_nonce, obj, loc, timeout):
             #choose the first locator discovered
             loc = ll[0]
 
+    #Did a value arrive with the discovery response (i.e. rapid mode synch)?
+    _disc_lock.acquire()
+    for x in _discovery_cache:
+        if x.objective.name == obj.name and x.received:
+            #No need to execute synchronization
+            _result = x.received
+            _disc_lock.release()
+            return errors.ok, _result #return rapid mode reply
+    _disc_lock.release()
+
     #request synch from the given locator
     #create TCP socket, assemble message and send it
     #(lazy code, not checking that TCP is the right one to use)
@@ -1792,17 +1877,15 @@ def synchronize(asa_nonce, obj, loc, timeout):
         except:
             _disactivate_session(snonce)
             return errors.CBORfail, None
-        if not _check_mess(payload):
+        msg = _parse_msg(payload)
+        if not msg:
             #invalid message, cannot process it
             _disactivate_session(snonce)
             return errors.noValidSynch, None
         ttprint("Synch: CBOR->Python:", payload)
-        if payload[_Pl_Msg]==M_SYNCH and payload[_Pl_Ses]==sync_sess:
-            #payload[_Pl_Con] is the objective
-            rec_obj = objective(payload[_Pl_Con][_Ob_Nam]) #the name
-            rec_obj.synch = True
-            rec_obj.loop_count = payload[_Pl_Con][_Ob_LCt]-1
-            rec_obj.value = payload[_Pl_Con][_Ob_Val]
+        if msg.mtype == M_SYNCH and msg.id_value == sync_sess:
+            rec_obj = msg.obj
+            rec_obj.loop_count -= 1
             if rec_obj.name == obj.name:
                 _disactivate_session(snonce)
                 return errors.ok, _detag_obj(rec_obj) #we're done!
@@ -1901,8 +1984,8 @@ class _synch_listen(threading.Thread):
                         q = x.listen_q
                         _obj_lock.release()
                         # get next request from queue
-                        # what we find in the queue is [asock,send_addr,payload]
-                        # payload is a Request Synch message
+                        # what we find in the queue is [asock,send_addr,message]
+                        # message is a Request Synch message
                         # asock is a connected TCP socket
                         rq = q.get()
 
@@ -1926,7 +2009,7 @@ class _synch_listen(threading.Thread):
                         self.obj.value = ovalue
                         _obj_lock.release()                        
                         # send back reply
-                        msg_bytes = _ass_message(M_SYNCH, rq[2][_Pl_Ses], None, self.obj)
+                        msg_bytes = _ass_message(M_SYNCH, rq[2].id_value, None, self.obj)
                         try:
                             rq[0].sendall(msg_bytes,0)
                             ttprint("Sent Synch")
@@ -2034,9 +2117,11 @@ def flood(asa_nonce, ttl, *tagged_obj):
     # Can't use a comprehension because we need the actual
     # list index in order select the correct socket.
     for i in range(len(_ll_zone_ids)):
-        if _l != []:
-            if _l[1] == unspec_address.packed:
-                _l[1] = _ll_zone_ids[i][1].packed # replace with LL address
+        for _o in _floodl:
+            _l = _o[1]
+            if _l != []:
+                if _l[1] == unspec_address.packed:
+                    _l[1] = _ll_zone_ids[i][1].packed # replace with LL address
         msg_bytes = _ass_message(M_FLOOD, flood_session, _session_locator.packed, ttl, _floodl)
         try:
             _mcssocks[i][1].sendto(msg_bytes,0,(str(ALL_GRASP_NEIGHBORS_6), GRASP_LISTEN_PORT))
@@ -2128,9 +2213,9 @@ def expire_flood(asa_nonce, tagged_obj):
 
 def hexit(xx):
     """Internal use only"""
-    if type(xx).__name__ == "bytes":
+    if tname(xx) == "bytes":
         return binascii.b2a_hex(xx)
-    elif type(xx).__name__ == "list":
+    elif tname(xx) == "list":
         for i in range(len(xx)):
             xx[i] = hexit(xx[i])            
     return(xx)
@@ -2575,7 +2660,7 @@ def _ass_obj(x):
 
     obj_flags = _flagword(x)
     _val = x.value
-    if type(_val).__name__ == "bytes":
+    if tname(_val) == "bytes":
         #see if user supplied value as CBOR bytes
         try:
             _ = cbor.loads(x.value)
@@ -2594,6 +2679,30 @@ def _ass_obj(x):
             pass
     return [x.name, obj_flags, x.loop_count, _val]
 
+def _ass_opt(x):
+    """Internal use only"""
+######################################
+# Assemble an option ready for CBOR
+######################################
+    if tname(x) == "option":
+        _opt = [x.otype]
+        if x.otype == O_DIVERT:
+            for y in x.embedded:
+                _opt.append(_ass_opt(y))
+        elif x.otype == O_DECLINE and x.reason:
+            _opt.append(x.reason)
+        elif x.otype in (O_IPv4_LOCATOR,O_IPv6_LOCATOR,O_FQDN_LOCATOR,O_URI_LOCATOR):
+            _opt.append(x.locator)
+            _opt.append(x.protocol)
+            _opt.append(x.port)                   
+        return _opt
+    elif tname(x) == "list":
+        #assume it's already assembled (legacy code, should be redundant)
+        return x
+    else:
+        #not valid
+        return [M_INVALID]
+
 
 def _ass_message(msg_type, session_id, initiator, *whatever):
     """Internal use only"""
@@ -2602,31 +2711,29 @@ def _ass_message(msg_type, session_id, initiator, *whatever):
 #                                  #
 # returns CBOR bytes               #
 ####################################
+
+    # Initialise message with type and session idenntifier
     msg =[msg_type, session_id]
 
     # Insert initiator in Discovery, Response and Flood
     if msg_type in (M_DISCOVERY, M_RESPONSE, M_FLOOD):
-        #msg.append(initiator.packed)
-        msg.append(initiator)
-
+        msg.append(initiator) #must be already packed
+        
+    # Insert remaining contents
     for x in whatever:
-        if type(x).__name__ == "objective":
+        if tname(x) == "objective":
             #needs to be embedded as a list object
             #ttprint("ass_message Obj value:", x.value)
             msg.append(_ass_obj(x))
-        elif type(x).__name__ == "list":
+        elif tname(x) == "list":
             if msg_type == M_FLOOD:
-##                #wrong version - inserted extra level of nesting                
-##                _stuff=[]
-##                for y in x:                    
-##                    _stuff.append([_ass_obj(y[0]),y[1]]) # objective & locator option
-##                msg.append(_stuff)
                 for y in x:
-                    msg.append([_ass_obj(y[0]),y[1]]) # objective & locator option
+                    msg.append([_ass_obj(y[_Fo_Fobj]),y[_Fo_Floc]]) # objective & locator option
             else:
-                #lazy code: assume we have a valid embedded option
-                #and insert as-is
-                msg.append(x)                  
+                #lazy code: assume we have a list of options
+                #and insert them
+                for o in x:
+                    msg.append(_ass_opt(o))                  
         elif msg_type in (M_WAIT, M_FLOOD, M_RESPONSE):
             msg.append(x) # insert timeout
         elif msg_type == M_INVALID:
@@ -2686,186 +2793,305 @@ def _detag_obj(x):
         pass
     return x
 
-def tname(x):
-    """-> name of type of x"""
-    return type(x).__name__
+#########################################
+#########################################
+# Inbound message parsing functions
+#########################################
+#########################################
 
-def _check_diag(e):
+
+def _parse_diag(*e):
     """Internal use only"""
 #########################################
-# Print diagnostic code for invalid syntax
+# Print diagnostic for invalid syntax
 #########################################
-    global test_mode
-    if test_mode:
-        tprint("Check message error", e)
+    global mess_check
+    if mess_check:
+        s=''
+        for x in e:
+            s += str(x)+' '
+        tprint("Message parsing error:", s)
 
-def _check_obj(obj):
-    """Internal use only"""
+
+
+def _parse_obj(obj):
+    """Internal use only
+       -> received objective, or None if invalid
+"""
 #########################################
 # Check if received objective is in valid
-# format, after CBOR decoding.
+# format, after CBOR decoding. Parse it.
 #########################################
     if tname(obj) != 'list':
-        _check_diag(1)
-        return False #not a list
-    if len(obj) not in (3,4):
-        _check_diag(2)
-        return False #invalid length
-    if tname(obj[0]) != 'str' or \
-       tname(obj[1]) != 'int' or \
-       tname(obj[2]) != 'int':
-        _check_diag(3)
-        return False #wrong type
+        _parse_diag("Objective is not a list")
+        return None #not a list
+    if len(obj) not in (_Ob_Val,_Ob_Val+1):
+        _parse_diag("Objective has wrong length")
+        return None #invalid length
+    if tname(obj[_Ob_Nam]) != 'str' or \
+       tname(obj[_Ob_Flg]) != 'int' or \
+       tname(obj[_Ob_LCt]) != 'int':
+        _parse_diag("Objective has wrong types")
+        return None #wrong type
     #no rules about the value field, so nothing to check
-    return True
-        
+    o = objective(obj[_Ob_Nam]) #name
+    o.neg,o.synch,o.dry = _flags(obj[_Ob_Flg])
+    o.loop_count = obj[_Ob_LCt]
+    o.value = obj[_Ob_Val]    
+    return o        
 
-def _check_opt(opt):
-    """Internal use only"""
+def _parse_opt(opt):
+    """Internal use only
+       -> received option, or None if invalid
+"""
 #########################################
 # Check if received option is in valid
-# format, after CBOR decoding.
+# format, after CBOR decoding. Parse it.
 #########################################
     if tname(opt) != 'list':
-        _check_diag(4)
-        return False #not a list
+        _parse_diag("Option is not a list")
+        return None #not a list
     elif not len(opt):
-        _check_diag(5)
-        return False #zero length
-    if opt[0] == O_DIVERT:
-        if len(opt) < 2 or \
-          tname(opt[1]) != 'list':
-            _check_diag(6)
-            return False 
+        _parse_diag("Option is empty")
+        return None #zero length
+    o = option(opt[_Op_Opt])
+    if opt[_Op_Opt] == O_DIVERT:
+        if len(opt) < _Op_Con+1 or \
+          tname(opt[_Op_Con]) != 'list':
+            _parse_diag("Invalid O_DIVERT")
+            return None 
         else:
-            #a bit lazy, did not check embedded locator options
-            return True
-    elif opt[0] == O_ACCEPT:
-        return True
-    elif opt[0] == O_DECLINE:
-        if len(opt) == 1:
-            return True
-        elif len(opt) == 2 and tname(opt[1]) == 'str':
-            return True
+            #scan through embedded locators inside divert option
+            for _raw_opt in opt[_Op_Con:]:
+                eo = _parse_opt(_raw_opt)
+                if eo:
+                    o.embedded.append(eo)               
+                else:
+                    _parse_diag("Invalid option inside O_DIVERT")
+                    return None
+                return o
+    elif opt[_Op_Opt] == O_ACCEPT:
+        return o
+    elif opt[_Op_Opt] == O_DECLINE:
+        if len(opt) == _Op_Opt+1:
+            return o
+        elif len(opt) == _Op_Con+1 and tname(opt[_Op_Con]) == 'str':
+            o.reason = opt[_Op_Con]
+            return o
         else:
-            _check_diag(7)
-            return False
-    elif opt[0] in (O_IPv6_LOCATOR, O_IPv4_LOCATOR):
-        if len(opt) == 4:
-            if tname(opt[1]) == 'bytes' and \
-               tname(opt[2]) == 'int' and \
-               tname(opt[3]) == 'int':
-                return True
+            _parse_diag("Invalid content in O_DECLINE")
+            return None
+    elif opt[_Op_Opt] in (O_IPv6_LOCATOR, O_IPv4_LOCATOR):
+        if len(opt) == _Op_Port+1:
+            if tname(opt[_Op_Con]) == 'bytes' and \
+               tname(opt[_Op_Proto]) == 'int' and \
+               tname(opt[_Op_Port]) in ('int','NoneType'):
+                o.locator = opt[_Op_Con]
+                o.protocol = opt[_Op_Proto]
+                o.port = opt[_Op_Port]
+                return o
             else:
-                _check_diag(8)
-                return False
+                _parse_diag("IPv6 or IPv4 locator option has invalid format")
+                return None
         else:
-            return False
-    elif opt[0] in (O_FQDN_LOCATOR, O_URI_LOCATOR):
-        if len(opt) == 4:
-            if tname(opt[1]) == 'str' and \
-               (tname(opt[2]) == 'int' or tname(opt[2]) == 'NoneType') and \
-               (tname(opt[3]) == 'int' or tname(opt[3]) == 'NoneType'):
-                _check_diag(9)
-                return True
+            _parse_diag("IPv6 or IPv4 locator option has wrong length")
+            return None
+    elif opt[_Op_Opt] in (O_FQDN_LOCATOR, O_URI_LOCATOR):
+        if len(opt) == _Op_Port+1:
+            if tname(opt[_Op_Con]) == 'str' and \
+               (tname(opt[_Op_Proto]) == 'int' or tname(opt[_Op_Proto]) == 'NoneType') and \
+               (tname(opt[_Op_Port]) == 'int' or tname(opt[_Op_Port]) == 'NoneType'):
+                o.locator = opt[_Op_Con]
+                o.protocol = opt[_Op_Proto]
+                o.port = opt[_Op_Port]
+                return o
             else:
-                _check_diag(10)
-                return False
+                _parse_diag("FQDN or URI locator option has invalid format")
+                return None
         else:
-            _check_diag(11)
-            return False
+            _parse_diag("FQDN or URI locator option has wrong length")
+            return None
     else:
-        _check_diag(12)
-        return False # unknown option
+        if tname(opt[_Op_Opt]) != 'str':
+            #not an objective option
+            _parse_diag("Unknown option type", opt[_Op_Opt])
+        return None # unknown option
         
 
-def _check_mess(payload):
-    """Internal use only"""
+def _parse_msg(payload):
+    """Internal use only
+       -> received grasp.message, or None if invalid
+"""
 #########################################
 # Check if received message is in valid
-# format, after CBOR decoding.
-# Does not check content of options or objectives
+# format, after CBOR decoding. Parse it.
 #########################################
-    if not mess_check:
-        return True
     if tname(payload) != 'list':
-        _check_diag(13)
-        return False #not a list
+        _parse_diag("Message is not a list")
+        return None #not a list
     elif not len(payload):
-        _check_diag(14)
-        return False #zero length
-    if payload[0] == M_NOOP:
-        return True
-    elif payload[0] == M_DISCOVERY:
-        if len(payload) != 4 or \
-           tname(payload[1]) != 'int' or \
-           tname(payload[2]) != 'bytes' or \
-           not _check_obj(payload[3]):
-            _check_diag(15)
-            return False
+        _parse_diag("Message is empty")
+        return None #zero length
+    m = message(payload[_Pl_Msg])
+    if payload[_Pl_Msg] == M_NOOP:
+        return m
+    elif payload[_Pl_Msg] == M_DISCOVERY:
+        if len(payload) != _Pl_Dobj+1 or \
+           tname(payload[_Pl_Ses]) != 'int' or \
+           tname(payload[_Pl_Ini]) != 'bytes':
+            _parse_diag("Invalid M_DISCOVERY format")
+            return None
         else:
-            return True
-    elif payload[0] == M_RESPONSE:
-        if len(payload) < 5 or \
-           tname(payload[1]) != 'int' or \
-           tname(payload[2]) != 'bytes' or \
-           tname(payload[3]) != 'int' or \
-           not _check_opt(payload[4]):
-            _check_diag(16)
-            return False 
+            o = _parse_obj(payload[_Pl_Dobj])
+            if o:
+                m.id_value = payload[_Pl_Ses]
+                m.id_source = payload[_Pl_Ini]
+                m.obj = o
+                return m
+            else:
+                _parse_diag("No objective in M_DISCOVERY")
+                return None
+    elif payload[_Pl_Msg] == M_RESPONSE:
+        if len(payload) < _Pl_Robj or \
+           tname(payload[_Pl_Ses]) != 'int' or \
+           tname(payload[_Pl_Ini]) != 'bytes' or \
+           tname(payload[_Pl_TTL]) != 'int':
+            _parse_diag("Invalid M_RESPONSE format")
+            return None 
         else:
-            #only checked for minimal content 
-            return True
-    elif payload[0] == M_FLOOD:
-        if len(payload) < 5 or \
-           tname(payload[1]) != 'int' or \
-           tname(payload[2]) != 'bytes' or \
-           tname(payload[3]) != 'int' or \
-           tname(payload[4]) != 'list':
-            _check_diag(17)
-            return False 
+            for pl in payload[_Pl_Rloc:]:
+                o = _parse_opt(pl)
+                if o:
+                    m.id_value = payload[_Pl_Ses]
+                    m.id_source = payload[_Pl_Ini]
+                    m.ttl = payload[_Pl_TTL]
+                    m.options.append(o)
+                else:
+                    #look for optional objective
+                    m.obj = _parse_obj(pl)
+            if not m.options:
+                _parse_diag("No valid option in M_RESPONSE")
+                return None
+            else:
+                return m
+    elif payload[_Pl_Msg] == M_FLOOD:
+        if len(payload) < _Pl_FCon+1 or \
+           tname(payload[_Pl_Ses]) != 'int' or \
+           tname(payload[_Pl_Ini]) != 'bytes' or \
+           tname(payload[_Pl_TTL]) != 'int':
+            _parse_diag("Invalid M_FLOOD format")
+            return None 
         else:
-            #check embedded tagged objective
-            if len(payload[4]) != 2:
-                _check_diag(18)
-                return False
-            if not _check_obj(payload[4][0]):
-                _check_diag(19)
-                return False
-            if len(payload[4][1]):
-                if not _check_opt(payload[4][1]):
-                    _check_diag(20)
-                    return False
-            #only checked for first content    
-            return True        
-    elif payload[0] in (M_REQ_NEG, M_NEGOTIATE, M_SYNCH, M_REQ_SYN):
-        if len(payload) != 3 or \
-           tname(payload[1]) != 'int' or \
-           not _check_obj(payload[2]):
-            _check_diag(21)
-            return False
+            m.id_value = payload[_Pl_Ses]
+            m.id_source = payload[_Pl_Ini]
+            m.ttl = payload[_Pl_TTL]
+            m.flood_list = []
+            #fetch embedded tagged objectives
+            pp = _Pl_FCon
+            while pp < len(payload):
+                if len(payload[pp]) != _Fo_Floc+1:
+                    _parse_diag("No tagged objective in M_FLOOD")
+                    return None
+                ob = _parse_obj(payload[pp][_Fo_Fobj])
+                if not ob:
+                    _parse_diag("Invalid objective in M_FLOOD")
+                    return None
+                if payload[pp][_Fo_Floc] != []:
+                    op = _parse_opt(payload[pp][_Fo_Floc])
+                    if not op:
+                        _parse_diag("Invalid locator option in M_FLOOD")
+                        return None
+                else:
+                    op = None
+                m.flood_list.append(flooded_objective(ob,op))
+                pp += 1
+            return m        
+    elif payload[_Pl_Msg] in (M_REQ_NEG, M_NEGOTIATE, M_SYNCH, M_REQ_SYN):
+        if len(payload) != _Pl_Con+1 or \
+           tname(payload[_Pl_Ses]) != 'int':
+            _parse_diag("Invalid message format")
+            return None
         else:
-            return True
-    elif payload[0] == M_END:
-        if len(payload) !=3 or \
-           tname(payload[1]) != 'int' or \
-           not _check_opt(payload[2]):
-            _check_diag(22)
-            return False
+            o = _parse_obj(payload[_Pl_Con])
+            if o:
+                m.id_value = payload[_Pl_Ses]
+                m.obj = o
+                return m
+            else:
+                #_parse_obj emitted the diagnostic
+                return None
+    elif payload[_Pl_Msg] == M_END:
+        if len(payload) != _Pl_Con+1 or \
+           tname(payload[_Pl_Ses]) != 'int':
+            _parse_diag("Invalid M_END format")
+            return None
         else:
-            return True
-    elif payload[0] == M_WAIT:
-        if len(payload) != 3 or \
-           tname(payload[1]) != 'int' or \
-           tname(payload[2]) != 'int':
-            _check_diag(23)
-            return False
+            o = _parse_opt(payload[_Pl_Con])
+            if o:
+                m.id_value = payload[_Pl_Ses]
+                m.options.append(o)
+                return m
+            else:
+                #_parse_option emitted the diagnostic
+                return None
+    elif payload[_Pl_Msg] == M_WAIT:
+        if len(payload) != _Pl_Con+1 or \
+           tname(payload[_Pl_Ses]) != 'int' or \
+           tname(payload[_Pl_Con]) != 'int':
+            _parse_diag("Invalid M_WAIT format")
+            return None
         else:
-            return True
+            m.id_value = payload[_Pl_Ses]
+            m.ttl = payload[_Pl_Con]
+            return m
+    elif payload[_Pl_Msg] == M_INVALID:
+        if len(payload) < _Pl_Con or \
+           tname(payload[_Pl_Ses]) != 'int':
+            _parse_diag("Invalid M_INVALID format :-)")
+            return None
+        else:
+            m.id_value = payload[_Pl_Ses]
+            if len(payload) > _Pl_Con:
+                m.content = payload[_Pl_Con:]
+            return m            
     else:
         #unknown message type
-        _check_diag(24)
-        return False
+        _parse_diag("Unknown message type", payload[_Pl_Msg])
+        return None
+
+def _opt_to_asa_loc(opt, ifi, inDivert):
+    """Internal use only"""
+####################################################
+# Service function for _mchandler, _drloop etc.
+# opt is a grasp.option
+# ->  list of asa_locator (empty if no valid locator)
+####################################################  
+    
+    if opt.otype == O_DIVERT:
+        alocs = []
+        for opt in opt.embedded:
+            alocs.append(opt, ifi, True)
+        return alocs
+    else:
+        aloc = asa_locator(None, ifi, inDivert)
+        aloc.protocol = opt.protocol
+        aloc.port = opt.port
+        if opt.otype == O_IPv6_LOCATOR:
+            aloc.locator = ipaddress.IPv6Address(opt.locator)
+            aloc.is_ipaddress = True
+        elif opt.otype == O_IPv4_LOCATOR:
+            aloc.locator = ipaddress.IPv4Address(opt.locator)
+            aloc.is_ipaddress = True
+        elif opt.otype == O_FQDN_LOCATOR:
+            aloc.locator = opt.locator
+            aloc.is_fqdn = True
+        elif opt.otype == O_URI_LOCATOR:
+            aloc.locator = opt.locator
+            aloc.is_uri = True
+        else:
+            #no valid locator
+            return []
+    return [aloc]    
 
 def _try_mcsock(ifi):
     """Internal use only"""
@@ -2968,22 +3194,22 @@ class _mclisten(threading.Thread):
                     except:
                         tprint("Multicast: CBOR decode error")
                         continue
-                    if not _check_mess(payload):
+                    msg = _parse_msg(payload)
+                    if not msg:
                         #invalid message, cannot process it
                         tprint(payload)
                         tprint("Multicast: Invalid message format")
                         continue
                     ttprint("Multicast: CBOR->Python:", payload)
-                    if payload[_Pl_Msg]==M_DISCOVERY or payload[_Pl_Msg]==M_FLOOD:
+                    if msg.mtype in (M_DISCOVERY, M_FLOOD):
                         if _relay_needed:
-                            #ttprint("Send",payload[_Pl_Msg],"from", ifn, "for relay")
-                            _relay(payload,ifn)                         
+                            #ttprint("Send",msg.mtype,"from", ifn, "for relay")
+                            #Note that Flood relay needs the payload
+                            _relay(payload, msg, ifn)                         
                         try:
-                            ##munge the format of the initiator address
-                            #payload[_Pl_Ini] = ipaddress.IPv6Address(payload[_Pl_Ini])
-                            ttprint("Initiator:", str(ipaddress.IPv6Address(payload[_Pl_Ini])))
+                            ttprint("Initiator:", str(ipaddress.IPv6Address(msg.id_source)))
                             #queue for the mc handler
-                            _mcq.put([saddr, sport, ifn, payload],block=False)
+                            _mcq.put([saddr, sport, ifn, msg],block=False)
                         except:
                             tprint("Multicast queue full: packet dropped")
                             pass
@@ -3000,13 +3226,17 @@ class _mclisten(threading.Thread):
                                         #in case we missed a CPU wakeup
                 
 
-def _relay(payload, ifi):
+def _relay(payload, msg, ifi):
     """Internal use only"""
 ####################################################
 # Relay GRASP link-local multicasts (Discovery and #
 # Flood messages) to all other interfaces          #
 #                                                  #
-# lazy code: only controls loops using loop count  #
+# NOTE WELL: uses raw payload, as well as parsed   #
+# message, since we send the payload out again in  #
+# the Flood case.                                            #
+#                                                  #
+# Lazy code: only controls loops using loop count  #
 # and doesn't throttle rate. Note that we must not #
 # throttle in line here because that would block   #
 # the multicast listener - instead we need to queue#
@@ -3014,60 +3244,44 @@ def _relay(payload, ifi):
 # the throttle.                                    #
 ####################################################
 
-    
-    #r_snonce = _session_nonce(payload[_Pl_Ses],ipaddress.IPv6Address(payload[_Pl_Ini]))
-    r_snonce = _session_nonce(payload[_Pl_Ses],payload[_Pl_Ini])
+    r_snonce = _session_nonce(msg.id_value, msg.id_source)
     
     # drop message if this is a looping relay
     sess = _get_session(r_snonce)
     if sess:
         if sess.id_relayed:
-            ttprint("Dropping a looping relayed multicast")
+            tprint("Dropping a looping relayed multicast", msg.mtype)
             return
         else:
             #mark the session as relayed
             sess.id_relayed = True
-            _update_session(sess)
-            
-    _mtype = payload[_Pl_Msg]
+            _update_session(sess)            
+           
+    if msg.mtype == M_FLOOD:
+        uobj = payload[_Pl_FCon][_Fo_Fobj] #first objective in unparsed flood
+        uobj[_Ob_LCt] -= 1                 #decrement its loop count
+        if uobj[_Ob_LCt] < 1:
+            return #do nothing
+        #ttprint("relaying", uobj[_Ob_Nam],"flood with loop ct", uobj[_Ob_LCt])
+        if not sess:
+            #insert session id for the relayed copies
+            news = _session_instance(r_snonce.id_value,True,r_snonce.id_source)
+            news.id_relayed = True
+            _insert_session(news)
+        msg_bytes = cbor.dumps(payload)
+        for i in range(len(_ll_zone_ids)):                
+            ttprint("Flood relay for", uobj[_Ob_Nam])
+            if _ll_zone_ids[i][0] != ifi: # will skip the relay source interface
+                _mcssocks[i][1].sendto(msg_bytes,0,(str(ALL_GRASP_NEIGHBORS_6), GRASP_LISTEN_PORT))
+        _disactivate_flood(r_snonce).start() #will disactivate session ID later
+    elif msg.mtype == M_DISCOVERY:
+        msg.obj.loop_count -=1 #decrement loop count
+        if msg.obj.loop_count < 1:
+            return #do nothing
+        # reuse discover function in relay mode, but kick it off
+        # as a separate thread with fresh copy of objective         
+        _disc_relay(r_snonce, _oclone(msg.obj), ifi).start()
 
-    if _mtype == M_FLOOD:
-##        #Faulty version with extra level of nesting
-##        obj = payload[_Pl_FCon][0][0] #first objective in flood
-        obj = payload[_Pl_FCon][0] #first objective in flood
-        #ttprint("1st obj in flood",obj)
-    else:
-        obj = payload[_Pl_Dobj] #discovery target
-    
-    obj[_Ob_LCt] -= 1       #decrement loop count
-                            #fyi: this also decrements the count in the
-                            #flood cache instance (blame Python)
-    
-    if obj[_Ob_LCt] > 0:
-        #loop count not exhausted        
-        if _mtype == M_FLOOD:
-            #ttprint("relaying", obj[_Ob_Nam],"flood with loop ct", obj[_Ob_LCt])
-            if not sess:
-                #insert session id for the relayed copies
-                news = _session_instance(r_snonce.id_value,True,r_snonce.id_source)
-                news.id_relayed = True
-                _insert_session(news)
-            msg_bytes = cbor.dumps(payload)
-            for i in range(len(_ll_zone_ids)):                
-                ttprint("Flood relay for", obj[_Ob_Nam])
-                if _ll_zone_ids[i][0] != ifi: # will skip the relay source interface
-                    _mcssocks[i][1].sendto(msg_bytes,0,(str(ALL_GRASP_NEIGHBORS_6), GRASP_LISTEN_PORT))
-            _disactivate_flood(r_snonce).start() #will disactivate session ID later
-        elif _mtype == M_DISCOVERY:
-            # reuse discover function in relay mode, but kick it off
-            # as a separate thread with fresh copy of objective
-            d_obj = objective(obj[_Ob_Nam])           
-            d_obj.loop_count = obj[_Ob_LCt]
-            #Note - the flags are encoded in obj[_Ob_Flg]
-            #but we don't bother to decode them for discovery
-            #nor do we copy the value
-            _disc_relay(r_snonce, d_obj, ifi).start()
-        return
 
 class _disactivate_flood(threading.Thread):
     """Internal use only"""
@@ -3166,15 +3380,15 @@ class _drlisten(threading.Thread):
                 try:
                     payload = cbor.loads(rawmsg)
                     ttprint("Received response: CBOR->Python:", payload)
-                    if not _check_mess(payload):
+                    msg = _parse_msg(payload)
+                    if not msg:
                         ttprint("Invalid Response message: packet dropped")
-                    elif payload[_Pl_Msg] != M_RESPONSE:
+                    elif msg.mtype != M_RESPONSE:
                         ttprint("Not a Response message: packet dropped")
                     else:
                         #find the correct session queue
-                        sid=payload[_Pl_Ses]  # session ID
-                        #sini=ipaddress.IPv6Address(payload[_Pl_Ini]) # session initiator
-                        sini=payload[_Pl_Ini] # session initiator
+                        sid = msg.id_value  # session ID
+                        sini = msg.id_source # session initiator
                         s=_get_session(_session_nonce(sid,sini))
                         if s:
                             # (give up silently if no such session)
@@ -3183,7 +3397,7 @@ class _drlisten(threading.Thread):
                                 #queue for the discovery response handler
                                 try:
                                     ttprint("Queueing response")
-                                    s.id_dq.put([send_addr,self.ifi,payload],block=False)
+                                    s.id_dq.put([send_addr,self.ifi,msg],block=False)
                                 except:
                                     tprint("Discovery response queue full or absent: packet dropped")
                 except:
@@ -3217,13 +3431,13 @@ class _mchandler(threading.Thread):
             from_port = mc[1]
             from_ifi = mc[2]
             msg = mc[3]
-            if (not test_mode) and (msg[_Pl_Msg] == M_DISCOVERY) and \
-               (msg[_Pl_Ses] == _i_sent_it):
+            if (not test_mode) and (msg.mtype == M_DISCOVERY) and \
+               (msg.id_value == _i_sent_it):
                 # hack to ignore self-sent discoveries if multiple instances and
                 # running with listen_self == True
                 ttprint("Dropping own discovery multicast")
                 
-            elif msg[_Pl_Msg] == M_DISCOVERY:
+            elif msg.mtype == M_DISCOVERY:
                 ttprint("Got multicast Discovery msg")
             
                 if test_divert:
@@ -3231,39 +3445,62 @@ class _mchandler(threading.Thread):
 
                 #Is the objective registered in this node?
                 try:
-                    oname = msg[_Pl_Dobj][_Ob_Nam]
-                    _proto = False
+                    oname = msg.obj.name
+                    _found = False
+                    _rapid = False
+                    _normal = True
                     if not test_divert:                        
                         _obj_lock.acquire()
                         for x in _obj_registry:
                             if x.objective.name == oname and x.discoverable:
                                 #Yes, we have it, can send unicast response
-                                _proto = x.protocol
-                                _port = x.port
+                                #(including the objective, for rapid mode)
+                                _found = x.objective
+                                _rapid = x.rapid
                                 _ttl = x.ttl
-                                _local = x.local
+                                if x.locators:
+                                    #we have a specified list of asa_locator(s)
+                                    _alist = x.locators
+                                    _normal = False
+                                else:
+                                    #normal objective - create an asa_locator
+                                    if x.local or (_my_address == None):
+                                        #either link-local address is required, or we
+                                        #have no global address, may as well send link-local
+                                        for y in _ll_zone_ids:                            
+                                            if y[0] == from_ifi:
+                                                _a = y[1]                              
+                                    else:
+                                        _a = _my_address
+                                    _aloc = asa_locator(_a, None, False)                                    
+                                    _aloc.protocol = x.protocol
+                                    _aloc.port = x.port
+                                    _aloc.is_ipaddress = True
+                                    _alist = [_aloc]
                                 break
                         _obj_lock.release()
                     
-                    if _proto:
+                    if _found:
                         #found it locally, respond immediately
-                        if _local or (_my_address == None):
-                            #either link-local address is required, or we
-                            #have no global address, may as well send link-local
-                            for y in _ll_zone_ids:                            
-                                if y[0] == from_ifi:
-                                    a = y[1].packed                              
+                        _los = []
+                        for _aloc in _alist:
+                            #build locator option (only supports IPv6)
+                            _los.append([O_IPv6_LOCATOR, _aloc.locator.packed, _aloc.protocol, _aloc.port])
+
+                        #assemble response message with variable number of locators
+                        #plus the objective, for rapid mode
+                        if _rapid:
+                            msg_bytes = _ass_message(M_RESPONSE, msg.id_value, msg.id_source,
+                                                 _ttl, _los, _found)
                         else:
-                            a = _my_address.packed
-                        #build locator option (only supports IPv6)
-                        lo = [O_IPv6_LOCATOR, a, _proto, _port]
-                        #create TCP socket, assemble message and send it
+                            msg_bytes = _ass_message(M_RESPONSE, msg.id_value, msg.id_source,
+                                                 _ttl, _los)
+                            
+                        #create TCP socket and send message
                         sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
                         try:
                             #ttprint("Connecting",from_addr, from_port)
                             sock.connect((str(from_addr), from_port,0,from_ifi))
-                            msg_bytes = _ass_message(M_RESPONSE, msg[_Pl_Ses], msg[_Pl_Ini],
-                                                     _ttl, lo)
                             #ttprint("Sending",msg_bytes)
                             sock.sendall(msg_bytes,0)
                             ttprint("Sent local response")
@@ -3323,8 +3560,8 @@ class _mchandler(threading.Thread):
                                 sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
                                 try:
                                     sock.connect((str(from_addr), from_port,0,from_ifi))
-                                    msg_bytes = _ass_message(M_RESPONSE, msg[_Pl_Ses], msg[_Pl_Ini],
-                                                             _ttl, divo)
+                                    msg_bytes = _ass_message(M_RESPONSE, msg.id_value, msg.id_source,
+                                                             _ttl, [divo])
                                     sock.sendall(msg_bytes,0)
                                     ttprint("Sent divert response")
                                 except OSError as ex:
@@ -3333,82 +3570,67 @@ class _mchandler(threading.Thread):
                                 sock.close()
                         else:
                             _disc_lock.release()
-                except:
+                except OSError:
                     #invalid discovery format - do nothing
                     tprint("Discovery message has invalid content")
-            elif msg[_Pl_Msg] == M_FLOOD:
+            elif msg.mtype == M_FLOOD:
                 ttprint("Got Flood message")
 
-                try:
-##                    #Faulty version with extra level of nesting
-##                    lobjs = msg[_Pl_FCon] #list of [objective, locator]
-                    lobjs = msg[_Pl_FCon:] #list of [objective, locator]
-                except:
-                    lobjs = [] # invalid, treat it as an empty flood
-                    tprint("Flood message has invalid content")
-                    
-                #ttprint("List of [objective, locator]",lobjs)
-                for lo in lobjs:
-                    #sloppy code will crash if message malformed so...
-                    try:
-                        #construct asa_locator
-                        _l = lo[1] 
-                        if _l == []:
-                            _loc = asa_locator(None, None, False)
-                        else:
-                            #lazy, not checking it's an address option
-                            _loc = asa_locator(ipaddress.ip_address(_l[_Op_Con]), None, False)
-                            _loc.is_ipaddress = True
-                            _loc.protocol = _l[_Op_Proto]
-                            _loc.port = _l[_Op_Port]
-                        if msg[_Pl_TTL] > 0:
-                            _loc.expire = int(time.monotonic() + msg[_Pl_TTL]/1000)
-                        else:
-                            _loc.expire = 0
+                lobjs = msg.flood_list  #list of flooded_objective
 
-                        #construct objective
-                        obj = objective(lo[0][_Ob_Nam])
-                        obj.loop_count = lo[0][_Ob_LCt]                        
-                        #ttprint(obj.name,"flood has loop ct",obj.loop_count,"from ifi",from_ifi)
-                        obj.value = lo[0][_Ob_Val]
-                        obj = _detag_obj(obj)
-                        #source = ipaddress.IPv6Address(msg[_Pl_Ini])
-                        obj.neg, obj.synch, obj.dry = _flags(lo[0][_Ob_Flg])
-                        if obj.synch: #must be a synch objective
-                            _flood_lock.acquire()
-                            #zap objective if already cached
-                            #zap expired objectives as we go
-                            for j in range(len(_flood_cache)):
-                                if _flood_cache[j].objective.name == obj.name and \
-                                   _flood_cache[j].source.locator == _loc.locator and \
-                                   _flood_cache[j].source.port == _loc.port:
-                                    #found it, zap old version
-                                    _flood_cache[j] = None
-                                    
-                                elif _flood_cache[j].source.expire !=0 and \
-                                     _flood_cache[j].source.expire < int(time.monotonic()):
-                                    #expired entry, zap it
-                                    #ttprint("MC handler expiring flood",_flood_cache[j].objective.name,
-                                    #        _flood_cache[j].source.expire)
-                                    _flood_cache[j] = None
-                                    
-                            #garbage collect
-                            j=0
-                            while j < len(_flood_cache):
-                                if _flood_cache[j] == None:
-                                    del _flood_cache[j]
-                                else:
-                                    j += 1
-                            
-                            #if cache is full, delete oldest
-                            if len(_flood_cache) >= _floodCacheLimit:
-                                del(_flood_cache[0])
-                            #concatenate new one in MRU position
-                            _flood_cache.append(tagged_objective(obj,_loc))    
-                            _flood_lock.release()
-                            #ttprint(obj.name,"flood appended")
-                    except:
-                        tprint("Got malformed Flood message, dropped it")                             
+                for lo in lobjs:
+                    #construct asa_locator from locator option
+                    if lo.loco:
+                        _locs = _opt_to_asa_loc(lo.loco, None, False)
+                        if len(_locs) == 1:
+                            _loc = _locs[0] #got exactly one locator
+                            if msg.ttl > 0:
+                                _loc.expire = int(time.monotonic() + msg.ttl/1000)
+                            else:
+                                _loc.expire = 0
+                        else:
+                            tprint("Anomalous locator in flood ignored")
+                            _loc = asa_locator(None, None, False)
+                    else:
+                        _loc = asa_locator(None, None, False)                        
+
+                    #construct and store objective
+                    obj = lo.obj                      
+                    #ttprint(obj.name,"flood has loop ct",obj.loop_count,"from ifi",from_ifi)
+                    obj = _detag_obj(obj)
+                    if obj.synch: #must be a synch objective
+                        _flood_lock.acquire()
+                        #zap objective if already cached
+                        #zap expired objectives as we go
+                        for j in range(len(_flood_cache)):
+                            if _flood_cache[j].objective.name == obj.name and \
+                               _flood_cache[j].source.locator == _loc.locator and \
+                               _flood_cache[j].source.port == _loc.port:
+                                #found it, zap old version
+                                _flood_cache[j] = None
+                                
+                            elif _flood_cache[j].source.expire !=0 and \
+                                 _flood_cache[j].source.expire < int(time.monotonic()):
+                                #expired entry, zap it
+                                #ttprint("MC handler expiring flood",_flood_cache[j].objective.name,
+                                #        _flood_cache[j].source.expire)
+                                _flood_cache[j] = None
+                                
+                        #garbage collect
+                        j=0
+                        while j < len(_flood_cache):
+                            if _flood_cache[j] == None:
+                                del _flood_cache[j]
+                            else:
+                                j += 1
+                        
+                        #if cache is full, delete oldest
+                        if len(_flood_cache) >= _floodCacheLimit:
+                            del(_flood_cache[0])
+                        #concatenate new one in MRU position
+                        _flood_cache.append(tagged_objective(obj,_loc))    
+                        _flood_lock.release()
+                        #ttprint(obj.name,"flood appended")                            
             else:
                 # Some other message such as M_NOOP, drop it
                 pass
@@ -3452,38 +3674,36 @@ class _tcp_listen(threading.Thread):
                 try:
                     payload = cbor.loads(rawmsg)
                     ttprint("Received request: CBOR->Python:", payload)
-                    if not _check_mess(payload):
+                    msg = _parse_msg(payload)
+                    if not msg:
                         tprint("Invalid Request message: packet dropped")
                         asock.close()
-                    elif payload[_Pl_Msg] == M_INVALID:
-                        tprint("Got M_INVALID", payload[_Pl_Ses],payload[_Pl_Con])
+                    elif msg.mtype == M_INVALID:
+                        tprint("Got M_INVALID", msg.id_value, msg.content)
                         asock.close()
-                    elif (payload[_Pl_Msg] != M_REQ_SYN) and (payload[_Pl_Msg] != M_REQ_NEG):
+                    elif not msg.mtype in (M_REQ_SYN, M_REQ_NEG):
                         ttprint("Not a Request message: packet dropped")
                         asock.close()
                     else:
                         #check whether ASA is listening
                         queued = False
                         found = False
-                        oname = payload[_Pl_Con][_Ob_Nam]
-                        oflag = payload[_Pl_Con][_Ob_Flg]
                         _obj_lock.acquire()
-                        for x in _obj_registry: #??? seems to fail in reentrant case?
-                            if x.objective.name == oname:
+                        for x in _obj_registry: #??? once seemed to fail in reentrant case?
+                            if x.objective.name == msg.obj.name:
                                 found = True
-                                ttprint("Listener found ",oname," listening=",x.listening)
+                                ttprint("Listener found ",msg.obj.name," listening=",x.listening)
                                 if x.listening:
-                                    #check that request matches synch or neg
-                                    _neg,_synch,_dry = _flags(oflag)
-                                    if not ((x.objective.neg == _neg) or
-                                            (x.objective.dry == _dry) or 
-                                            (x.objective.synch == _synch)):
+                                    #check that flags match
+                                    if not ((x.objective.neg == msg.obj.neg) or
+                                            (x.objective.dry == msg.obj.dry) or 
+                                            (x.objective.synch == msg.obj.synch)):
                                         #oops, mismatch
                                         ttprint("Request mismatches capability")
                                         break                                
                                     #queue socket,sender,and message for the ASA
                                     try:
-                                        x.listen_q.put([asock,send_addr,payload],block=False)
+                                        x.listen_q.put([asock,send_addr,msg],block=False)
                                         queued = True
                                         ttprint("Request queued for ASA")
                                     except:
@@ -3676,11 +3896,15 @@ def dump_all():
         o= x.objective
         print(o.name,"ASA:",x.asa_id,"Listen:",x.listening,"Port", x.port,"Neg:",o.neg,
                "Synch:",o.synch,"Count:",o.loop_count,"Value:",o.value)
+        if x.locators:
+            print("Predefined locators:", x.locators)
     print("\nDiscovery cache contents:\n------------------------")
     for x in _discovery_cache:
         print(x.objective.name,"locators:")
         for y in x.asa_locators:
             print(y.locator, y.protocol, y.port, "Diverted:",y.diverted,"Expiry:",y.expire)
+        if x.received:
+            print("Received",x.received.name,"rapid value",x.received.value)
     print("\nFlood cache contents:\n--------------------")            
     for x in _flood_cache:
         print(x.objective.name,"count:",x.objective.loop_count,"value:", x.objective.value,
@@ -3781,9 +4005,9 @@ def _initialise_grasp():
         ####################################
 
         mess_check = False         # Set this True for detailed format
-                                   # checking for incoming messages
+                                   # diagnostics for incoming messages
         try:
-            _l = input("Strict inbound message checking? Y/N:")
+            _l = input("Diagnostics for inbound message parse errors? Y/N:")
             if _l:
                 if _l[0] == "Y" or _l[0] == "y":
                     mess_check = True
