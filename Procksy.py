@@ -86,8 +86,9 @@ grasp.tprint("looking for a registrar and then by announcing")
 grasp.tprint("the methods it supports, with associated locators,")
 grasp.tprint("as flooded GRASP objectives.")
 grasp.tprint("Then it pretends to generate BRSKI traffic.")
-grasp.tprint("This version corresponds to")
-grasp.tprint("a best guess at what BRSKI really wants")
+grasp.tprint("This version uses floods to find a registrar,")
+grasp.tprint("per draft-ietf-anima-bootstrapping-keyinfra-09")
+grasp.tprint('modulo an error in the "AN_proxy" definition')
 grasp.tprint("On Windows or Linux, there should soon be")
 grasp.tprint("a nice window that displays the process.")
 grasp.tprint("==========================")
@@ -117,9 +118,9 @@ else:
 ####################################
 
 # This is an empty GRASP objective to find the registrar
-# It's only used for synchronize so doesn't need to be filled in
+# It's only used for get_flood so doesn't need to be filled in
 
-reg_obj = grasp.objective("AN_registrar")
+reg_obj = grasp.objective("AN_join_registrar")
 reg_obj.synch = True
 
 ####################################
@@ -134,7 +135,7 @@ u_port = 11900 + grasp._prng.randint(0,5) #slightly random for demo
 
 proxy_address = grasp.unspec_address # This is the unspecified address,
                                      # which signals link-local address to API
-proxy_ttl = 60000 #milliseconds to live of the announcement
+proxy_ttl = 180000 #milliseconds to live of the announcement
 
 ####################################
 # Construct a correponding asa_locator
@@ -150,7 +151,7 @@ proxy_locator.is_ipaddress = True
 
 proxy_obj = grasp.objective("AN_proxy")
 proxy_obj.synch = True
-proxy_obj.value = None
+proxy_obj.value = ""
 # proxy_obj.loop_count not set, the API forces it to 1 for link-local use
 
 
@@ -169,35 +170,33 @@ else:
 # Start pretty printing
 ####################################
 
-grasp.init_bubble_text("BRSKI Join Proxy (flooding method)")
+grasp.init_bubble_text("BRSKI Join Proxy")
 grasp.tprint("Proxy starting now")
 
 ###################################
 # Now find the registrar and pick one or two methods
 ###################################
 
-# Note - this is a simple version that simply takes the
-# first registrar discovered.
-
 while True:
     registrar1 = None
     registrar2 = None
-    _err, _result = grasp.discover(_asa_nonce, reg_obj, 1000)
+    _err, _results = grasp.get_flood(_asa_nonce, reg_obj)
     if not _err:
         # _result contains the returned locators if any       
-        for x in _result:                
-            # use whatever logic you want to decide which results to flood.
+        for x in _results:                
+            # use whatever logic you want to decide which results to use.
             # For the demo code, we just pick one or two at random:
-            grasp.tprint("Got",reg_obj.name,"at",x.locator,x.protocol,x.port)
+            grasp.tprint("Got", reg_obj.name, "at",
+                         x.source.locator, x.source.protocol, x.source.port)
             if (not registrar1) and grasp._prng.randint(0,2):
-                registrar1 = x
+                registrar1 = x.source
             elif grasp._prng.randint(0,2):
-                if x != registrar1:
-                    registrar2 = x
+                if x.source != registrar1:
+                    registrar2 = x.source
   
 
     else:
-        grasp.tprint("Discovery failed", grasp.etext[_err])
+        grasp.tprint("get_flood failed", grasp.etext[_err])
 
     ###################################
     # Flood the chosen ones to neighbors
@@ -245,5 +244,7 @@ while True:
             # Wait and loop back to find another registrar
             # and wait for another pledge.
             ###################################
+    else:
+        grasp.tprint("No registrar found, waiting to try again")
 
     time.sleep(18) # wait chosen to avoid synchronicity with Reggie

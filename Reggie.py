@@ -3,8 +3,8 @@
 
 """This is some demo code showing how a BRSKI registrar would
 provide its contact details to an ANIMA network using GRASP. The
-actual BRSKI transactions are not included. Corresponds to
-draft-ietf-anima-bootstrapping-keyinfra-??.
+actual BRSKI transactions are not included. Flooding
+version, per draft-ietf-anima-bootstrapping-keyinfra-09.
 """
 
 import sys
@@ -37,6 +37,23 @@ def dump_some():
                      x.objective.value,"source",x.source.locator, x.source.protocol,
                      x.source.port,"expiry",x.source.expire)
 
+####################################
+# Thread to flood the objective repeatedly
+####################################
+
+class flooder(threading.Thread):
+    """Thread to flood objectve repeatedly"""
+    def __init__(self):
+        threading.Thread.__init__(self)
+
+    def run(self):
+        while True:
+            time.sleep(60)
+            grasp.flood(asa_nonce, 120000,
+                        grasp.tagged_objective(reg_obj,tcp_locator),
+                        grasp.tagged_objective(reg_obj,udp_locator),
+                        grasp.tagged_objective(reg_obj,ipip_locator))
+
 ###################################
 # Main thread starts here
 ###################################
@@ -49,8 +66,8 @@ grasp.tprint("It mimics a BRSKI Join Registrar by providing")
 grasp.tprint("the methods it supports, with associated locators,")
 grasp.tprint("as synchronized GRASP objectives.")
 grasp.tprint("Then it pretends to wait for BRSKI traffic.")
-grasp.tprint("This version corresponds to")
-grasp.tprint("a best guess at what BRSKI really wants")
+grasp.tprint("This version supports flooding,")
+grasp.tprint("per draft-ietf-anima-bootstrapping-keyinfra-09")
 grasp.tprint("On Windows or Linux, there should soon be")
 grasp.tprint("a nice window that displays the process.")
 grasp.tprint("==========================")
@@ -72,7 +89,7 @@ time.sleep(8) # time to read the text
 # would need different names. For example the name
 # could include a timestamp.
 
-_err,_asa_nonce = grasp.register_asa("Reggie")
+_err, asa_nonce = grasp.register_asa("Reggie")
 if not _err:
     grasp.tprint("ASA Reggie registered OK")
 else:
@@ -142,48 +159,38 @@ ipip_locator.is_ipaddress = True
 
 radius = 6    # Limit the radius of discovery
 
-reg_obj = grasp.objective("AN_registrar")
+reg_obj = grasp.objective("AN_join_registrar")
 reg_obj.loop_count = radius
-reg_obj.synch = True    # In fact it's only discovered
+reg_obj.synch = True    # needed for flooding
 reg_obj.value = None
 
 ####################################
 # Register the GRASP objective
 ####################################
 
-_err = grasp.register_obj(_asa_nonce,reg_obj,discoverable=True,
-                          locators = [tcp_locator, udp_locator, ipip_locator])
+_err = grasp.register_obj(asa_nonce,reg_obj)
 if not _err:
     grasp.tprint("Objective", reg_obj.name, "registered OK")
 else:
     grasp.tprint("Objective registration failure:", grasp.etext[_err])
     exit() # demo code doesn't handle registration errors
 
-# If we wanted to allow multiple simultaneous ASAs to register
-# this objective, we would include an optional parameter thus:
-#
-# _ok, _temp = grasp.register_obj(_asa_nonce,reg_obj,overlap=True)
 
 ####################################
 # Start pretty printing
 ####################################
 
-grasp.init_bubble_text("BRSKI Join Registrar")
+grasp.init_bubble_text("BRSKI Join Registrar (flooding method)")
 grasp.tprint("Registrar starting now")
 
-        
-#####################################
-### Listen for synchronization requests
-### (which makes the objective discoverable)
-#####################################
-##grasp.tprint("Listening for synch:",reg_obj.name)
-##
-### This is a non-blocking call
-##_err = grasp.listen_synchronize(_asa_nonce, reg_obj)
-##if _err:
-##    grasp.tprint("Listen_synch failed:", grasp.etext[_err])
-##else:
+####################################
+# Start flooding thread
+####################################
 
+
+flooder().start()
+grasp.tprint("Flooding", reg_obj.name, "for ever")
+        
 ###################################
 # Listen for requests
 ###################################
