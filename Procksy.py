@@ -68,7 +68,7 @@ def floodout(registrar):
     # Flood it out for the pledges
     ###################################
     
-    grasp.tprint("Flooding",proxy_obj.name, proxy_locator.protocol, proxy_locator.port)
+    grasp.tprint("Flooding",proxy_obj.name, proxy_locator.locator, proxy_locator.protocol, proxy_locator.port)
     grasp.flood(_asa_nonce, proxy_ttl, grasp.tagged_objective(proxy_obj, proxy_locator))
     return
 
@@ -87,8 +87,8 @@ grasp.tprint("the methods it supports, with associated locators,")
 grasp.tprint("as flooded GRASP objectives.")
 grasp.tprint("Then it pretends to generate BRSKI traffic.")
 grasp.tprint("This version uses floods to find a registrar,")
-grasp.tprint("per draft-ietf-anima-bootstrapping-keyinfra-09")
-grasp.tprint('modulo an error in the "AN_proxy" definition')
+grasp.tprint("per draft-ietf-anima-bootstrapping-keyinfra-12")
+#grasp.tprint('modulo an error in the "AN_proxy" definition')
 grasp.tprint("On Windows or Linux, there should soon be")
 grasp.tprint("a nice window that displays the process.")
 grasp.tprint("==========================")
@@ -124,7 +124,7 @@ reg_obj = grasp.objective("AN_join_registrar")
 reg_obj.synch = True
 
 ####################################
-# Create a ports for the proxy's communication
+# Create ports for the proxy's communication
 # with pledges
 ####################################
 
@@ -182,7 +182,7 @@ while True:
     registrar2 = None
     _err, _results = grasp.get_flood(_asa_nonce, reg_obj)
     if not _err:
-        # _result contains the returned locators if any       
+        # _results contains the returned locators if any       
         for x in _results:                
             # use whatever logic you want to decide which results to use.
             # For the demo code, we just pick one or two at random:

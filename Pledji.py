@@ -59,8 +59,8 @@ grasp.tprint("looking for a Join Assistant (proxy) and the")
 grasp.tprint("methods it supports. Then it pretends to")
 grasp.tprint("generate BRSKI traffic.") 
 grasp.tprint("This version corresponds to")
-grasp.tprint("draft-ietf-anima-bootstrapping-keyinfra-09")
-grasp.tprint('modulo an error in the "AN_proxy" definition')
+grasp.tprint("draft-ietf-anima-bootstrapping-keyinfra-12")
+#grasp.tprint('modulo an error in the "AN_proxy" definition')
 grasp.tprint("On Windows or Linux, there should soon be")
 grasp.tprint("a nice window that displays the process.")
 grasp.tprint("==========================")
@@ -159,4 +159,4 @@ while True:
         # Wait and loop back to find another proxy
         ################################### 
 
-    time.sleep(18) # wait chosen to avoid synchronicity with Procksy
+    time.sleep(20) # wait chosen to avoid synchronicity with Procksy

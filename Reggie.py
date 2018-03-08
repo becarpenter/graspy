@@ -49,10 +49,12 @@ class flooder(threading.Thread):
     def run(self):
         while True:
             time.sleep(60)
+            reg_obj.value = "EST-TLS"
             grasp.flood(asa_nonce, 120000,
-                        grasp.tagged_objective(reg_obj,tcp_locator),
-                        grasp.tagged_objective(reg_obj,udp_locator),
-                        grasp.tagged_objective(reg_obj,ipip_locator))
+                        grasp.tagged_objective(reg_obj,tcp_locator))
+            
+    #not using          grasp.tagged_objective(reg_obj,udp_locator),
+    #not using          grasp.tagged_objective(reg_obj,ipip_locator))
 
 ###################################
 # Main thread starts here
@@ -67,7 +69,7 @@ grasp.tprint("the methods it supports, with associated locators,")
 grasp.tprint("as synchronized GRASP objectives.")
 grasp.tprint("Then it pretends to wait for BRSKI traffic.")
 grasp.tprint("This version supports flooding,")
-grasp.tprint("per draft-ietf-anima-bootstrapping-keyinfra-09")
+grasp.tprint("per draft-ietf-anima-bootstrapping-keyinfra-12")
 grasp.tprint("On Windows or Linux, there should soon be")
 grasp.tprint("a nice window that displays the process.")
 grasp.tprint("==========================")
@@ -138,7 +140,6 @@ udp_locator.is_ipaddress = True
 # Create a dummy IP-in-IP port for BRSKI-IPIP
 ####################################
 
-# For this demo, we just make up some numbers:
 
 ipip_port = 0
 ipip_proto = socket.IPPROTO_IPV6
@@ -157,7 +158,7 @@ ipip_locator.is_ipaddress = True
 # Construct the GRASP objective
 ####################################
 
-radius = 6    # Limit the radius of discovery
+radius = 255    # Limit the radius of flooding
 
 reg_obj = grasp.objective("AN_join_registrar")
 reg_obj.loop_count = radius
