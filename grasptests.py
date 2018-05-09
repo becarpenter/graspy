@@ -18,7 +18,7 @@ class testASA(threading.Thread):
     def run(self):
         time.sleep(1) # avoid printing glitch
         grasp.tprint("WARNING: you can't run this test suite more than once without restarting the Python context; it leaves GRASP data structures dirty!\n")
-        grasp.skip_dialogue(testing=True, selfing=True, checking=True)
+        grasp.skip_dialogue(testing=True, selfing=True, diagnosing=True)
         time.sleep(1) # just to avoid mixed up print output
 
 ####################################
