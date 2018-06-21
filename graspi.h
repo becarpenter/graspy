@@ -1,5 +1,5 @@
 // Draft header file for GRASP API in C
-// For background see draft-liu-anima-grasp-api
+// For background see draft-ietf-anima-grasp-api
 
 #include <stdbool.h>
 #include <stdint-gcc.h>
@@ -23,7 +23,7 @@ typedef uint32_t asa_nonce;
 
 // We want all strings to have an associated length field, as an aid
 // to buffer overflow prevention. But if there's a good string library
-// available, use that at all costs.
+// available, use that instead.
 
 typedef struct {
     int st_size;
