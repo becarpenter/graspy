@@ -29,14 +29,17 @@ You need to be Administrator (Windows) or su (Linux).
 
 When it asks
   Test mode (many extra diagnostics)? Y/N:
+  
 type n unless you want very detailed diagnostics.
 
 When it asks
   Diagnostics for inbound message parse errors? Y/N:
+  
 type y unless you really don't care about parse errors
 
 When it asks
   Listen to own multicasts? Y/N:
+  
 type y if running on a single machine. Although all instances will share
 the same IPv6 address, everything should work exactly as if each
 instance was on a separate machine.
