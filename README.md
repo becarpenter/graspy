@@ -25,19 +25,22 @@ the file AN-overview.pdf
 The code was tested only on Windows 7 and 10, Linux and MacOS so far. In theory,
 the code will work on any host with Winsock2 or Posix compliant TCP/IPv6.
 When testing ASAs, run each one in a separate instance of Python 3.
-You need to be Administrator (Windows) or su (Linux).
+You might need to be Administrator (Windows) or su (Linux).
 
 When it asks
+
   Test mode (many extra diagnostics)? Y/N:
   
 type n unless you want very detailed diagnostics.
 
 When it asks
+
   Diagnostics for inbound message parse errors? Y/N:
   
 type y unless you really don't care about parse errors
 
 When it asks
+
   Listen to own multicasts? Y/N:
   
 type y if running on a single machine. Although all instances will share
