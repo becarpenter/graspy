@@ -5,7 +5,14 @@ This repository is for a Python 3 demonstration implementation of GRASP, the Gen
 
 This code IS NOT INTENDED FOR PRODUCTION USE. See the license and disclaimer in the grasp.py source file.
 
-Status on 2018-07-19:
+Status on 2019-01-26:
+
+The grasp.py and acp.py modules module have been updated to
+move the logic for finding interfaces and addresses into
+acp.py. Thus the main module will work with any kind of ACP,
+including a Layer 2 ACP.
+INCOMPATIBLE WITH PYTHON GRASP RELEASES BEFORE 2019! Refresh
+grasp.py and acp.py at the same time.
 
 These versions use the latest GRASP API with integer error codes.
 INCOMPATIBLE WITH PYTHON GRASP RELEASES BEFORE 2017!

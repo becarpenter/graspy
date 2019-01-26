@@ -8,7 +8,7 @@
 # Module name is 'grasp'
 #                                                     
 # This is a prototype/demo implementation of GRASP in 
-# Python 3.4, based on draft-ietf-anima-grasp-15.txt
+# Python 3.6 or higher, based on draft-ietf-anima-grasp-15.txt
 # It is not guaranteed or validated in any way and is 
 # both incomplete and probably wrong. It makes no claim
 # to be production-quality code. Its main purpose is to
@@ -70,7 +70,7 @@
 ########################################################
 ########################################################"""
 
-_version = "15-BC-20171024-EXP"
+_version = "15-BC-20190126"
 
 ##########################################################
 # The following change log records significant changes,
@@ -143,6 +143,9 @@ _version = "15-BC-20171024-EXP"
 #          added rapid mode objective to M_RESPONSE
 #          updated register_obj() and synchronize() APIs accordingly
 
+# 20190126 restructure to put IP address/interface discovery
+#          in the ACP module
+
 ##########################################################
 
 ####################################
@@ -196,6 +199,7 @@ except:
 ###
 try:
     import cbor
+    #import cbor2 as cbor
 except:
     print("Could not import cbor. Please do 'pip3 install cbor' and try again.")
     time.sleep(10)
@@ -204,6 +208,13 @@ try:
     import acp
 except:
     print("Could not import acp. Please copy acp.py to the current directory and try again.")
+    time.sleep(10)
+    exit()
+
+try:
+    acp.new2019()
+except:
+    print("Please update acp.py to the 2019 version and try again.")
     time.sleep(10)
     exit()
 
@@ -3724,90 +3735,6 @@ class _tcp_listen(threading.Thread):
 # end of TCP listener
 
 
-def _get_my_address(build_zone=False):
-    """Internal use only"""
-####################################################
-# Return my own valid global-scope IP address
-# Build array of valid LL zones if requested
-#
-# This code is very o/s dependent
-####################################################
-    global _ll_zone_ids
-    #ttprint("Entering _get_my_address",build_zone)
-    _new_locator = None
-    _new_ULA = None
-    if os.name=="nt":
-        #This only works on Windows
-        _addrinfo = socket.getaddrinfo(socket.gethostname(),0)
-        for _af,_temp,_temp,_temp,_addr in _addrinfo:
-            if _af == socket.AF_INET6:
-                _addr,_temp,_temp,_temp = _addr  #get first item from tuple
-                if build_zone and ('%' in _addr):
-                    _addr,_zid = _addr.split('%') #strip any Zone ID
-                    _loc = ipaddress.IPv6Address(_addr)
-                    if _loc.is_link_local:
-                        _ll_zone_ids.append([_zid,_loc])
-                if not '%' in _addr:
-                    _loc = ipaddress.IPv6Address(_addr)
-                    # Now test for GRUA or ULA address
-                    if _loc.is_global and not _new_locator:
-                        _new_locator = _loc # save first GRUA
-                    if (_loc.is_private and not _loc.is_link_local) and not _new_ULA:
-                        _new_ULA = _loc  # save first ULA
-        if _new_ULA:
-            _new_locator = _new_ULA       # prefer ULA
-
-        #Windows-only hack to convert interface (Zone) IDs to indexes
-        if build_zone:
-            _ll_zone_ids = [[int(zid), loc] for zid, loc in _ll_zone_ids]
-            
-    else:
-        #Jinmei's code for Posix operating systems
-
-        if build_zone:
-            for _iid, _ in socket.if_nameindex():
-                with socket.socket(socket.AF_INET6, socket.SOCK_DGRAM) as _s:
-                    try:
-                        _s.connect(('fe80::100', 4096, 0, _iid))
-                        _addr = _s.getsockname()[0]
-                        if '%' in _addr:
-                            _addr, _zid = _addr.split('%') #strip any Zone ID
-                            _loc = ipaddress.IPv6Address(_addr)
-                            if _loc.is_link_local:
-                                _ll_zone_ids.append([_zid, _loc])
-                    except:
-                        pass
-            
-            #Convert interface (Zone) IDs to indexes
-            _ll_zone_ids = [[socket.if_nametoindex(zid), loc] for zid, loc in _ll_zone_ids]
-
-
-        
-        #Get own IPv6 address somewhat portably...
-        #Needs testing on sleeping Linux...
-        _s = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
-        try:
-            #This is a hack. We send a bogon to a site-local multicast
-            #address (reserved by IANA for 'any private experiment').
-            #Then we can find the sending address from the socket.
-            #Note that this used to use a bogus global unicast address
-            #('2001:db8:f000:baaa:f000:baaa:f000:baaa') but that fails in
-            #case of a ULA prefix with no default IPv6 route.
-            #
-            #To find a non-hack solution, look for 'getnifs.py'
-            
-            _s.connect(('ff05::114', GRASP_LISTEN_PORT))
-            _s.send(b'0',0)
-        except:
-            pass
-        _sn = _s.getsockname()[0]
-        _s.close()
-        if (not '%' in _sn) and (_sn != '::'):
-            _new_locator = ipaddress.IPv6Address(_sn)
-            #it seems that on Linux this does not exclude LL addresses
-            if _new_locator.is_link_local:
-                _new_locator = None
-    return _new_locator  
 
 
 class _watcher(threading.Thread):
@@ -3816,7 +3743,7 @@ class _watcher(threading.Thread):
 # Keep an eye on the ACP for ever                  #
 # (or for some time in test mode)                  #
 #                                                  #
-# In a production implementation, this thread would#
+# In a production implementation, the ACP would    #
 # monitor the active interfaces, add any new active#
 # ones, and mark any old ones as inactive, updating#
 # various data structures accordingly.             #
@@ -3850,7 +3777,7 @@ class _watcher(threading.Thread):
                     
             # Watch for address change
             
-            _new_locator = _get_my_address()
+            _new_locator = acp._get_my_address()
             if _new_locator == ipaddress.IPv6Address("::1"):
                 # loopback address, looks like the CPU slept
                 tprint("CPU wakeup, no address yet")
@@ -4097,7 +4024,7 @@ def _initialise_grasp():
     # What interfaces do I have?       #
     ####################################
 
-    _my_address = _get_my_address(build_zone=True)
+    _my_address, _ll_zone_ids = acp._get_my_address(build_zone=True)
     _said_no_route = False # flag used by watcher
 
     if _my_address == None:
