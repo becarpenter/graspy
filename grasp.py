@@ -35,7 +35,7 @@
 # Released under the BSD 2-Clause "Simplified" or "FreeBSD"
 # License as follows:
 #                                                     
-# Copyright (C) 2015-2017 Brian E. Carpenter.                  
+# Copyright (C) 2015-2019 Brian E. Carpenter.                  
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with
