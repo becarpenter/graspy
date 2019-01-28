@@ -4033,6 +4033,8 @@ def _initialise_grasp():
         _x = struct.pack('!L', _prng.randint(0, 2147483647)) #32 bits of randomness
         _session_locator = ipaddress.IPv6Address(_p+_x)
     else:
+        if not (_my_address.is_private and not _my_address.is_link_local):
+            tprint("WARNING: address is not ULA")
         _session_locator = _my_address
         
     tprint("My global scope address:", str(_my_address))
