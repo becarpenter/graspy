@@ -69,10 +69,20 @@
 
 # 20190126 restructure to put IP address/interface discovery
 #          in the ACP module
+#
+# 20190129 exclude loopback interfaces on Windows
 
 import os
 import socket
 import ipaddress
+
+if os.name=="nt":  
+    try:
+        from scapy.all import get_windows_if_list
+        _scapy = True
+    except:
+        _scapy = False
+        print("Cannot find scapy, loopback interfaces may be included in ACP")
 
 GRASP_LISTEN_PORT = 7017 # IANA port number
 
@@ -82,7 +92,7 @@ def new2019():
 
 def status():
     """ACP status() """
-    return True  #assert that secure ACP is available
+    return "WARNING: Simple Layer 2 ACP with no security."
 
 def _get_my_address(build_zone=False):
     """Get current address and build zone array"""
@@ -92,14 +102,22 @@ def _get_my_address(build_zone=False):
 #
 # This code is very o/s dependent
 ####################################################
-    _ll_zone_ids = []          # Empty list of [IPv6 Zone (interface) index,LL address]
-    #ttprint("Entering _get_my_address",build_zone)
+
+    _ll_zone_ids = []   # Empty list of [IPv6 Zone (interface) index,LL address]
+    _loopbacks = []     # Empty list of loopback interfaces
     _new_locator = None
     _new_ULA = None
     if os.name=="nt":
         #This only works on Windows
+        if build_zone and _scapy:
+            #Find any loopback interfaces first
+            _if_list = get_windows_if_list()
+            for _if in _if_list:
+                if 'Loopback' in _if['name'] or 'Loopback' in _if['description']:
+                    _loopbacks.append(int(_if['win_index']))
+                
         _addrinfo = socket.getaddrinfo(socket.gethostname(),0)
-        for _af,_temp,_temp,_temp,_addr in _addrinfo:
+        for _af,_temp1,_temp2,_temp3,_addr in _addrinfo:
             if _af == socket.AF_INET6:
                 _addr,_temp,_temp,_temp = _addr  #get first item from tuple
                 if build_zone and ('%' in _addr):
@@ -167,7 +185,16 @@ def _get_my_address(build_zone=False):
             #it seems that on Linux this does not exclude LL addresses
             if _new_locator.is_link_local:
                 _new_locator = None
+
+    
+                
     if build_zone:
+        #remove loopback interfaces
+        i = 0
+        while i < len(_ll_zone_ids):
+            if _ll_zone_ids[i][0] in _loopbacks:
+                del _ll_zone_ids[i]
+            i += 1
         return _new_locator, _ll_zone_ids
     else:
         return _new_locator

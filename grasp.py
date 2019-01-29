@@ -3901,14 +3901,14 @@ def _initialise_grasp():
     ####################################
 
 
-    print("WARNING: This is insecure prototype code for the GRASP")
-    print("protocol. It is unsuitable for operational purposes.")
-    print("Use it at your own risk!")
+    tprint("WARNING: This is prototype code for the GRASP protocol.")
+    tprint("It is unsuitable for operational purposes and relies")
+    tprint("on an underlying ACP for security. Use it at your own risk!")
     #print("For further details see http://xkcd.com/1742/")
-    print("Python GRASP Version",_version,"released under the")
-    print("simplified BSD license.")
-    print("Will use port", GRASP_LISTEN_PORT)
-    print("Will use multicast address", ALL_GRASP_NEIGHBORS_6)
+    tprint("Python GRASP Version",_version,"released under the")
+    tprint("simplified BSD license.")
+    tprint("Will use port", GRASP_LISTEN_PORT)
+    tprint("Will use multicast address", ALL_GRASP_NEIGHBORS_6)
 
     if not _skip_dialogue:
     
@@ -4013,7 +4013,7 @@ def _initialise_grasp():
     ####################################
 
     _secure = acp.status()
-    tprint("ACP status is", _secure)
+    tprint("ACP status:", _secure)
     _tls_required = not _secure
     if _tls_required:
         #should be code to cause TLS wrapping of TCP...
