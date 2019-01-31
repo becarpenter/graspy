@@ -71,20 +71,17 @@
 #          in the ACP module
 #
 # 20190129 exclude loopback interfaces on Windows
+#
+# 20190131 faster method for finding loopbacks
 
 import os
 import socket
 import ipaddress
-
-if os.name=="nt":  
-    try:
-        from scapy.all import get_windows_if_list
-        _scapy = True
-    except:
-        _scapy = False
-        print("Cannot find scapy, loopback interfaces may be included in ACP")
+import subprocess
+import binascii
 
 GRASP_LISTEN_PORT = 7017 # IANA port number
+_loopbacks = []     # Empty list of loopback interfaces
 
 def new2019():
     """To detect out of date module"""
@@ -94,6 +91,39 @@ def status():
     """ACP status() """
     return "WARNING: Simple Layer 2 ACP with no security."
 
+def _find_windows_loopbacks():
+    global _loopbacks
+    result = []
+    win_cmd = 'ipconfig'
+    process = subprocess.Popen(win_cmd,
+    shell=True,
+    stdout=subprocess.PIPE,
+    stderr=subprocess.PIPE )
+    for line in process.stdout:
+        if line != b'\r\n' and line != b'Windows IP Configuration\r\n':
+            result.append(bytearray.fromhex(line.hex()).decode())
+    errcode = process.returncode
+
+    inloopback = False
+    inadaptor = False
+    ignore = False
+    for line in result:
+        if line[0] != ' ':
+            #new adaptor
+            inloopback = False
+            inadaptor = False
+            ignore = False
+            if 'oopback' in line:
+                inloopback = True
+        else:
+            #in the body of an adaptor
+            if 'Media disconnected' in line:
+                ignore = True
+            elif 'Link-local IPv6 Address' in line and inloopback and (not ignore):
+                #find the interface index
+                _, ifi = line.split('%')
+                _loopbacks.append(int(ifi))
+
 def _get_my_address(build_zone=False):
     """Get current address and build zone array"""
 ####################################################
@@ -102,19 +132,13 @@ def _get_my_address(build_zone=False):
 #
 # This code is very o/s dependent
 ####################################################
-
+    global _loopbacks
     _ll_zone_ids = []   # Empty list of [IPv6 Zone (interface) index,LL address]
-    _loopbacks = []     # Empty list of loopback interfaces
     _new_locator = None
     _new_ULA = None
     if os.name=="nt":
         #This only works on Windows
-        if build_zone and _scapy:
-            #Find any loopback interfaces first
-            _if_list = get_windows_if_list()
-            for _if in _if_list:
-                if 'Loopback' in _if['name'] or 'Loopback' in _if['description']:
-                    _loopbacks.append(int(_if['win_index']))
+        _find_windows_loopbacks()
                 
         _addrinfo = socket.getaddrinfo(socket.gethostname(),0)
         for _af,_temp1,_temp2,_temp3,_addr in _addrinfo:
