@@ -70,7 +70,7 @@
 ########################################################
 ########################################################"""
 
-_version = "15-BC-20190126"
+_version = "15-BC-20190206"
 
 ##########################################################
 # The following change log records significant changes,
@@ -144,7 +144,12 @@ _version = "15-BC-20190126"
 #          updated register_obj() and synchronize() APIs accordingly
 
 # 20190126 restructure to put IP address/interface discovery
-#          in the ACP module
+#          in the ACP module. There are now no operating system
+#          dependencies in the grasp.py module (although some
+#          may be hidden in imported Python modules).
+
+# 20190206 added socket timeouts when sending discovery responses
+#          or request messages, since there should always be a listener
 
 ##########################################################
 
@@ -178,7 +183,6 @@ def init(self):
 ####################################
 
 import time
-import os
 import errno
 import threading
 import queue
@@ -1295,6 +1299,7 @@ def req_negotiate(asa_nonce, obj, peer, timeout):
         _ifi = 0
     try:
         ttprint("Sending req_negotiate to",peer.locator, peer.port)
+        sock.settimeout(5) #there should always be a listener
         sock.connect((str(peer.locator), peer.port,0,_ifi))
         msg_bytes = _ass_message(M_REQ_NEG, neg_sess, None, obj)
         sock.sendall(msg_bytes,0)
@@ -1866,6 +1871,7 @@ def synchronize(asa_nonce, obj, loc, timeout):
         _ifi = 0
     try:
         ttprint("Sending request_syn to",loc.locator,loc.port,_ifi)
+        sock.settimeout(5) #there should always be a listener
         sock.connect((str(loc.locator), loc.port,0,_ifi))
         msg_bytes = _ass_message(M_REQ_SYN, sync_sess, None, obj)
         sock.sendall(msg_bytes,0)
@@ -3509,6 +3515,7 @@ class _mchandler(threading.Thread):
                             
                         #create TCP socket and send message
                         sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+                        sock.settimeout(1) #discovery requester should always be waiting
                         try:
                             #ttprint("Connecting",from_addr, from_port)
                             sock.connect((str(from_addr), from_port,0,from_ifi))
@@ -3569,6 +3576,7 @@ class _mchandler(threading.Thread):
                             if len(divo)>1:
                                 #create TCP socket
                                 sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+                                sock.settimeout(1) #discovery requester should always be waiting
                                 try:
                                     sock.connect((str(from_addr), from_port,0,from_ifi))
                                     msg_bytes = _ass_message(M_RESPONSE, msg.id_value, msg.id_source,
