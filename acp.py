@@ -73,12 +73,19 @@
 # 20190129 exclude loopback interfaces on Windows
 #
 # 20190131 faster method for finding loopbacks
+#
+# 20190205 make ULA preference work for Linux by using netifaces
+#
+# 20190206 bypass gap in older Python on Windows
 
 import os
 import socket
 import ipaddress
 import subprocess
 import binascii
+
+if os.name!="nt":
+    import netifaces
 
 GRASP_LISTEN_PORT = 7017 # IANA port number
 _loopbacks = []     # Empty list of loopback interfaces
@@ -138,7 +145,12 @@ def _get_my_address(build_zone=False):
     _new_ULA = None
     if os.name=="nt":
         #This only works on Windows
-        _find_windows_loopbacks()
+
+        #This needs recent Python
+        try:
+            _find_windows_loopbacks()
+        except:
+            pass
                 
         _addrinfo = socket.getaddrinfo(socket.gethostname(),0)
         for _af,_temp1,_temp2,_temp3,_addr in _addrinfo:
@@ -164,56 +176,80 @@ def _get_my_address(build_zone=False):
             _ll_zone_ids = [[int(zid), loc] for zid, loc in _ll_zone_ids]
             
     else:
-        #Jinmei's code for Posix operating systems
+        
+##       if build_zone:
+##            #Jinmei's code for Posix operating systems
+##            for _iid, _ in socket.if_nameindex():
+##                with socket.socket(socket.AF_INET6, socket.SOCK_DGRAM) as _s:
+##                    try:
+##                        _s.connect(('fe80::100', 4096, 0, _iid))
+##                        _addr = _s.getsockname()[0]
+##                        if '%' in _addr:
+##                            _addr, _zid = _addr.split('%') #strip any Zone ID
+##                            _loc = ipaddress.IPv6Address(_addr)
+##                            if _loc.is_link_local:
+##                                _ll_zone_ids.append([_zid, _loc])
+##                    except:
+##                        pass
 
-        if build_zone:
-            for _iid, _ in socket.if_nameindex():
-                with socket.socket(socket.AF_INET6, socket.SOCK_DGRAM) as _s:
-                    try:
-                        _s.connect(('fe80::100', 4096, 0, _iid))
-                        _addr = _s.getsockname()[0]
-                        if '%' in _addr:
+        ifs = netifaces.interfaces()
+        for interface in ifs:
+            config = netifaces.ifaddresses(interface)
+            if interface != 'lo' and netifaces.AF_INET6 in config.keys():
+                for link in config[netifaces.AF_INET6]:
+                    if 'addr' in link.keys():
+                        _addr = link['addr']
+                        if build_zone and '%' in _addr:
                             _addr, _zid = _addr.split('%') #strip any Zone ID
                             _loc = ipaddress.IPv6Address(_addr)
                             if _loc.is_link_local:
-                                _ll_zone_ids.append([_zid, _loc])
-                    except:
-                        pass
-            
+                               _ll_zone_ids.append([_zid, _loc])
+
+                        if not '%' in _addr:
+                            _loc = ipaddress.IPv6Address(_addr)
+                            # Now test for GRUA or ULA address
+                            if _loc.is_global and not _new_locator:
+                                _new_locator = _loc # save first GRUA
+                            if (_loc.is_private and not _loc.is_link_local) and not _new_ULA:
+                                _new_ULA = _loc  # save first ULA
+                if _new_ULA:
+                    _new_locator = _new_ULA       # prefer ULA
+                        
+        if build_zone:
             #Convert interface (Zone) IDs to indexes
             _ll_zone_ids = [[socket.if_nametoindex(zid), loc] for zid, loc in _ll_zone_ids]
 
 
         
-        #Get own IPv6 address somewhat portably...
-        #Needs testing on sleeping Linux...
-        _s = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
-        try:
-            #This is a hack. We send a bogon to a site-local multicast
-            #address (reserved by IANA for 'any private experiment').
-            #Then we can find the sending address from the socket.
-            #Note that this used to use a bogus global unicast address
-            #('2001:db8:f000:baaa:f000:baaa:f000:baaa') but that fails in
-            #case of a ULA prefix with no default IPv6 route.
-            #
-            #To find a non-hack solution, look for 'getnifs.py'
-            
-            _s.connect(('ff05::114', GRASP_LISTEN_PORT))
-            _s.send(b'0',0)
-        except:
-            pass
-        _sn = _s.getsockname()[0]
-        _s.close()
-        if (not '%' in _sn) and (_sn != '::'):
-            _new_locator = ipaddress.IPv6Address(_sn)
-            #it seems that on Linux this does not exclude LL addresses
-            if _new_locator.is_link_local:
-                _new_locator = None
+##        #Get own IPv6 address somewhat portably...
+##        #Needed if using jinmei's method
+##        _s = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
+##        try:
+##            #This is a hack. We send a bogon to a site-local multicast
+##            #address (reserved by IANA for 'any private experiment').
+##            #Then we can find the sending address from the socket.
+##            #Note that this used to use a bogus global unicast address
+##            #('2001:db8:f000:baaa:f000:baaa:f000:baaa') but that fails in
+##            #case of a ULA prefix with no default IPv6 route.
+##            #
+##            #To find a non-hack solution, use the netifaces module
+##            
+##            _s.connect(('ff05::114', GRASP_LISTEN_PORT))
+##            _s.send(b'0',0)
+##        except:
+##            pass
+##        _sn = _s.getsockname()[0]
+##        _s.close()
+##        if (not '%' in _sn) and (_sn != '::'):
+##            _new_locator = ipaddress.IPv6Address(_sn)
+##            #it seems that on Linux this does not exclude LL addresses
+##            if _new_locator.is_link_local:
+##                _new_locator = None
 
     
                 
     if build_zone:
-        #remove loopback interfaces
+        #remove any loopback interfaces detected earlier
         i = 0
         while i < len(_ll_zone_ids):
             if _ll_zone_ids[i][0] in _loopbacks:
