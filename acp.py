@@ -77,6 +77,8 @@
 # 20190205 make ULA preference work for Linux by using netifaces
 #
 # 20190206 bypass gap in older Python on Windows
+#
+# 20190207 deal with change in socket.getaddrinfo() in Python 3.7
 
 import os
 import socket
@@ -155,9 +157,12 @@ def _get_my_address(build_zone=False):
         _addrinfo = socket.getaddrinfo(socket.gethostname(),0)
         for _af,_temp1,_temp2,_temp3,_addr in _addrinfo:
             if _af == socket.AF_INET6:
-                _addr,_temp,_temp,_temp = _addr  #get first item from tuple
-                if build_zone and ('%' in _addr):
+                _addr,_temp,_temp,_zid = _addr  #get first item from tuple
+                if '%' in _addr:
+                    #this applies on Windows for Python before 3.7
                     _addr,_zid = _addr.split('%') #strip any Zone ID
+                    _zid = int(_zid)
+                if build_zone:
                     _loc = ipaddress.IPv6Address(_addr)
                     if _loc.is_link_local:
                         _ll_zone_ids.append([_zid,_loc])
@@ -170,10 +175,6 @@ def _get_my_address(build_zone=False):
                         _new_ULA = _loc  # save first ULA
         if _new_ULA:
             _new_locator = _new_ULA       # prefer ULA
-
-        #Windows-only hack to convert interface (Zone) IDs to indexes
-        if build_zone:
-            _ll_zone_ids = [[int(zid), loc] for zid, loc in _ll_zone_ids]
             
     else:
         
