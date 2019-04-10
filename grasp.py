@@ -70,7 +70,7 @@
 ########################################################
 ########################################################"""
 
-_version = "15-BC-20190419"
+_version = "15-BC-20190410"
 
 ##########################################################
 # The following change log records significant changes,
@@ -151,7 +151,7 @@ _version = "15-BC-20190419"
 # 20190206 added socket timeouts when sending discovery responses
 #          or request messages, since there should always be a listener
 
-# 20190419 improved flood() to allow all locator types
+# 20190410 improved flood() to allow all locator types
 #          (based on patch from Robin Jaeger)
 
 ##########################################################
