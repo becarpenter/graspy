@@ -70,7 +70,7 @@
 ########################################################
 ########################################################"""
 
-_version = "15-BC-20190206"
+_version = "15-BC-20190419"
 
 ##########################################################
 # The following change log records significant changes,
@@ -150,6 +150,9 @@ _version = "15-BC-20190206"
 
 # 20190206 added socket timeouts when sending discovery responses
 #          or request messages, since there should always be a listener
+
+# 20190419 improved flood() to allow all locator types
+#          (based on patch from Robin Jaeger)
 
 ##########################################################
 
@@ -2118,9 +2121,16 @@ def flood(asa_nonce, ttl, *tagged_obj):
         elif x.source.locator == None:
             _l = [] # empty option            
         elif x.source.is_ipaddress:
-            _l = [O_IPv6_LOCATOR, x.source.locator.packed, x.source.protocol, x.source.port]
+            if tname(x.source) == 'IPv6Address':
+                _l = [O_IPv6_LOCATOR, x.source.locator.packed, x.source.protocol, x.source.port]
+            else:
+                _l = [O_IPv4_LOCATOR, x.source.locator.packed, x.source.protocol, x.source.port]
+        elif x.source.is_fqdn:	
+            _l = [O_FQDN_LOCATOR, x.source.locator, x.source.protocol, x.source.port]
+        elif x.source.is_uri:
+            _l = [O_URI_LOCATOR, x.source.locator, x.source.protocol, x.source.port]
         else:
-            return errors.invalidLoc # Lazy, not allowing other formats
+            return errors.invalidLoc 
         _floodl.append([x.objective, _l])
         #ttprint("Flood list:",_floodl)
         
@@ -3267,7 +3277,7 @@ def _relay(payload, msg, ifi):
     sess = _get_session(r_snonce)
     if sess:
         if sess.id_relayed:
-            tprint("Dropping a looping relayed multicast", msg.mtype)
+            ttprint("Dropping a looping relayed multicast", msg.mtype)
             return
         else:
             #mark the session as relayed
