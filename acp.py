@@ -79,6 +79,8 @@
 # 20190206 bypass gap in older Python on Windows
 #
 # 20190207 deal with change in socket.getaddrinfo() in Python 3.7
+#
+# 20190721 handle netifaces import better
 
 import os
 import socket
@@ -87,7 +89,13 @@ import subprocess
 import binascii
 
 if os.name!="nt":
-    import netifaces
+    try:
+        import netifaces
+    except:
+        print("Could not import netifaces")
+        time.sleep(10)
+        exit()
+    
 
 GRASP_LISTEN_PORT = 7017 # IANA port number
 _loopbacks = []     # Empty list of loopback interfaces
@@ -101,6 +109,7 @@ def status():
     return "WARNING: Simple Layer 2 ACP with no security."
 
 def _find_windows_loopbacks():
+    """Internal use only"""
     global _loopbacks
     result = []
     win_cmd = 'ipconfig'
