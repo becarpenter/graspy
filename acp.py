@@ -81,6 +81,8 @@
 # 20190207 deal with change in socket.getaddrinfo() in Python 3.7
 #
 # 20190721 handle netifaces import better
+#
+# 20190925 remove test for 'lo' in Posix branch
 
 import os
 import socket
@@ -110,6 +112,7 @@ def status():
 
 def _find_windows_loopbacks():
     """Internal use only"""
+    #this detects bogus interfaces such as TunnelBear
     global _loopbacks
     result = []
     win_cmd = 'ipconfig'
@@ -205,7 +208,9 @@ def _get_my_address(build_zone=False):
         ifs = netifaces.interfaces()
         for interface in ifs:
             config = netifaces.ifaddresses(interface)
-            if interface != 'lo' and netifaces.AF_INET6 in config.keys():
+            #if interface != 'lo' and netifaces.AF_INET6 in config.keys():
+            #(removed because assigning a ULA to 'lo' is reasonable practice)
+            if netifaces.AF_INET6 in config.keys():
                 for link in config[netifaces.AF_INET6]:
                     if 'addr' in link.keys():
                         _addr = link['addr']
