@@ -70,7 +70,7 @@
 ########################################################
 ########################################################"""
 
-_version = "15-BC-20190410"
+_version = "15-BC-20190925"
 
 ##########################################################
 # The following change log records significant changes,
@@ -154,6 +154,15 @@ _version = "15-BC-20190410"
 # 20190410 improved flood() to allow all locator types
 #          (based on patch from Robin Jaeger)
 
+# 20190724 added exception handler to _mchandler to increase robustness
+
+# 20190912 inserted diagnostics for _mchandler hang
+
+# 20190913 fixed lock bug in _mchandler for expired discovery
+
+# 20190925 commented out diagnostics for _mchandler hang
+
+
 ##########################################################
 
 ####################################
@@ -196,6 +205,7 @@ import ssl
 import random
 import binascii
 import copy
+import traceback
 ### for bubbles
 try:
     import tkinter as tk
@@ -3452,218 +3462,229 @@ class _mchandler(threading.Thread):
         global _i_sent_it
         tprint("Multicast queue handler up")
         while True:
-            mc = _mcq.get()
-            ttprint("Multicast handler got something", mc)
-            from_addr = mc[0]
-            from_port = mc[1]
-            from_ifi = mc[2]
-            msg = mc[3]
-            if (not test_mode) and (msg.mtype == M_DISCOVERY) and \
-               (msg.id_value == _i_sent_it):
-                # hack to ignore self-sent discoveries if multiple instances and
-                # running with listen_self == True
-                ttprint("Dropping own discovery multicast")
-                
-            elif msg.mtype == M_DISCOVERY:
-                ttprint("Got multicast Discovery msg")
-            
-                if test_divert:
-                    ttprint("mchandler: test_divert",test_divert)
-
-                #Is the objective registered in this node?
-                try:
-                    oname = msg.obj.name
-                    _found = False
-                    _rapid = False
-                    _normal = True
-                    if not test_divert:                        
-                        _obj_lock.acquire()
-                        for x in _obj_registry:
-                            if x.objective.name == oname and x.discoverable:
-                                #Yes, we have it, can send unicast response
-                                #(including the objective, for rapid mode)
-                                _found = x.objective
-                                _rapid = x.rapid
-                                _ttl = x.ttl
-                                if x.locators:
-                                    #we have a specified list of asa_locator(s)
-                                    _alist = x.locators
-                                    _normal = False
-                                else:
-                                    #normal objective - create an asa_locator
-                                    if x.local or (_my_address == None):
-                                        #either link-local address is required, or we
-                                        #have no global address, may as well send link-local
-                                        for y in _ll_zone_ids:                            
-                                            if y[0] == from_ifi:
-                                                _a = y[1]                              
-                                    else:
-                                        _a = _my_address
-                                    _aloc = asa_locator(_a, None, False)                                    
-                                    _aloc.protocol = x.protocol
-                                    _aloc.port = x.port
-                                    _aloc.is_ipaddress = True
-                                    _alist = [_aloc]
-                                break
-                        _obj_lock.release()
+            try:      #this is to catch unknown bug 20190724
+                mc = _mcq.get()
+                ttprint("Multicast handler got something", mc)
+                from_addr = mc[0]
+                from_port = mc[1]
+                from_ifi = mc[2]
+                msg = mc[3]
+                if (not test_mode) and (msg.mtype == M_DISCOVERY) and \
+                   (msg.id_value == _i_sent_it):
+                    # hack to ignore self-sent discoveries if multiple instances and
+                    # running with listen_self == True
+                    ttprint("Dropping own discovery multicast")
                     
-                    if _found:
-                        #found it locally, respond immediately
-                        _los = []
-                        for _aloc in _alist:
-                            #build locator option (only supports IPv6)
-                            _los.append([O_IPv6_LOCATOR, _aloc.locator.packed, _aloc.protocol, _aloc.port])
+                elif msg.mtype == M_DISCOVERY:
+                    ttprint("Got multicast Discovery msg")
+                
+                    if test_divert:
+                        ttprint("mchandler: test_divert",test_divert)
 
-                        #assemble response message with variable number of locators
-                        #plus the objective, for rapid mode
-                        if _rapid:
-                            msg_bytes = _ass_message(M_RESPONSE, msg.id_value, msg.id_source,
-                                                 _ttl, _los, _found)
-                        else:
-                            msg_bytes = _ass_message(M_RESPONSE, msg.id_value, msg.id_source,
-                                                 _ttl, _los)
-                            
-                        #create TCP socket and send message
-                        sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
-                        sock.settimeout(1) #discovery requester should always be waiting
-                        try:
-                            #ttprint("Connecting",from_addr, from_port)
-                            sock.connect((str(from_addr), from_port,0,from_ifi))
-                            #ttprint("Sending",msg_bytes)
-                            sock.sendall(msg_bytes,0)
-                            ttprint("Sent local response")
-                        except OSError as ex:
-                            tprint("Socket error when sending local discovery Response", ex)
-                        #we don't need this socket again
-                        sock.close()
-                        
-                    else:
-                                            
-                        # Not local - do we have it in the cache?
-                        # We will come here too if test_divert is set
-                        
-                        _disc_lock.acquire()
-                        # Can't use a comprehension because we need the actual
-                        # list entry in order to delete it.
-                        ll = False
-                        for i in range(len(_discovery_cache)):
-                            x = _discovery_cache[i]                        
-                            if x.objective.name == oname: #yes, we can send a Divert                            
-                                del(_discovery_cache[i])
-                                _discovery_cache.append(x)   #make it Most Recently Used
-                                _disc_lock.release()
-                                ll = x.asa_locators
-                                break
-                        if ll: #'ll' in locals():
-                            #Build Divert option
-                            ttprint("Build Divert option")
-                            _ttl = 0
-                            divo = [O_DIVERT]
-                            for y in ll:
-                                #ttprint("Discovery cache entry", y.is_ipaddress, y.locator, y.ifi, y.expire, int(time.monotonic()))
-                                if y.is_ipaddress:
-                                    if (not y.locator.is_link_local) and \
-                                       (y.expire > int(time.monotonic())): #not LL and not expired                                    
-                                                                   
-                                        #build locator option (only supports IPv6, TCP)
-                                        lo = [O_IPv6_LOCATOR, y.locator.packed, socket.IPPROTO_TCP, y.port]                                    
-                                        divo.append(lo)
-                                        if test_divert:
-                                            break # to avoid duplicates during local testing
-                                elif y.is_fqdn:
-                                    divo.append([O_FQDN_LOCATOR, y.locator, y.protocol, y.port])
-                                elif y.is_uri:
-                                    divo.append([O_URI_LOCATOR, y.locator])
-                                #calculate worst case TTL
-                                if y.expire > 0:
-                                    if _ttl > 0:
-                                        _ttl = min(int((y.expire - time.monotonic())*1000),_ttl)
+                    #Is the objective registered in this node?
+                    try:
+                        oname = msg.obj.name
+                        _found = False
+                        _rapid = False
+                        _normal = True
+                        if not test_divert:                        
+                            _obj_lock.acquire()
+                            for x in _obj_registry:
+                                if x.objective.name == oname and x.discoverable:
+                                    #Yes, we have it, can send unicast response
+                                    #(including the objective, for rapid mode)
+                                    _found = x.objective
+                                    _rapid = x.rapid
+                                    _ttl = x.ttl
+                                    if x.locators:
+                                        #we have a specified list of asa_locator(s)
+                                        _alist = x.locators
+                                        _normal = False
                                     else:
-                                        _ttl = int((y.expire - time.monotonic())*1000)
-                                
-                            if _ttl == 0:
-                                _ttl = _discCacheDefTimeOut  
-                            if len(divo)>1:
-                                #create TCP socket
-                                sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
-                                sock.settimeout(1) #discovery requester should always be waiting
-                                try:
-                                    sock.connect((str(from_addr), from_port,0,from_ifi))
-                                    msg_bytes = _ass_message(M_RESPONSE, msg.id_value, msg.id_source,
-                                                             _ttl, [divo])
-                                    sock.sendall(msg_bytes,0)
-                                    ttprint("Sent divert response")
-                                except OSError as ex:
-                                    tprint("Socket error when sending divert Response", ex)
-                                #we don't need this socket again
-                                sock.close()
-                        else:
-                            _disc_lock.release()
-                except OSError:
-                    #invalid discovery format - do nothing
-                    tprint("Discovery message has invalid content")
-            elif msg.mtype == M_FLOOD:
-                ttprint("Got Flood message")
-
-                lobjs = msg.flood_list  #list of flooded_objective
-
-                for lo in lobjs:
-                    #construct asa_locator from locator option
-                    if lo.loco:
-                        _locs = _opt_to_asa_loc(lo.loco, None, False)
-                        if len(_locs) == 1:
-                            _loc = _locs[0] #got exactly one locator
-                            if msg.ttl > 0:
-                                _loc.expire = int(time.monotonic() + msg.ttl/1000)
-                            else:
-                                _loc.expire = 0
-                        else:
-                            tprint("Anomalous locator in flood ignored")
-                            _loc = asa_locator(None, None, False)
-                    else:
-                        _loc = asa_locator(None, None, False)                        
-
-                    #construct and store objective
-                    obj = lo.obj                      
-                    #ttprint(obj.name,"flood has loop ct",obj.loop_count,"from ifi",from_ifi)
-                    obj = _detag_obj(obj)
-                    if obj.synch: #must be a synch objective
-                        _flood_lock.acquire()
-                        #zap objective if already cached
-                        #zap expired objectives as we go
-                        for j in range(len(_flood_cache)):
-                            if _flood_cache[j].objective.name == obj.name and \
-                               _flood_cache[j].source.locator == _loc.locator and \
-                               _flood_cache[j].source.port == _loc.port:
-                                #found it, zap old version
-                                _flood_cache[j] = None
-                                
-                            elif _flood_cache[j].source.expire !=0 and \
-                                 _flood_cache[j].source.expire < int(time.monotonic()):
-                                #expired entry, zap it
-                                #ttprint("MC handler expiring flood",_flood_cache[j].objective.name,
-                                #        _flood_cache[j].source.expire)
-                                _flood_cache[j] = None
-                                
-                        #garbage collect
-                        j=0
-                        while j < len(_flood_cache):
-                            if _flood_cache[j] == None:
-                                del _flood_cache[j]
-                            else:
-                                j += 1
+                                        #normal objective - create an asa_locator
+                                        if x.local or (_my_address == None):
+                                            #either link-local address is required, or we
+                                            #have no global address, may as well send link-local
+                                            for y in _ll_zone_ids:                            
+                                                if y[0] == from_ifi:
+                                                    _a = y[1]                              
+                                        else:
+                                            _a = _my_address
+                                        _aloc = asa_locator(_a, None, False)                                    
+                                        _aloc.protocol = x.protocol
+                                        _aloc.port = x.port
+                                        _aloc.is_ipaddress = True
+                                        _alist = [_aloc]
+                                    break
+                            _obj_lock.release()
                         
-                        #if cache is full, delete oldest
-                        if len(_flood_cache) >= _floodCacheLimit:
-                            del(_flood_cache[0])
-                        #concatenate new one in MRU position
-                        _flood_cache.append(tagged_objective(obj,_loc))    
-                        _flood_lock.release()
-                        #ttprint(obj.name,"flood appended")                            
-            else:
-                # Some other message such as M_NOOP, drop it
-                pass
+                        if _found:
+                            #found it locally, respond immediately
+                            _los = []
+                            for _aloc in _alist:
+                                #build locator option (only supports IPv6)
+                                _los.append([O_IPv6_LOCATOR, _aloc.locator.packed, _aloc.protocol, _aloc.port])
 
+                            #assemble response message with variable number of locators
+                            #plus the objective, for rapid mode
+                            if _rapid:
+                                msg_bytes = _ass_message(M_RESPONSE, msg.id_value, msg.id_source,
+                                                     _ttl, _los, _found)
+                            else:
+                                msg_bytes = _ass_message(M_RESPONSE, msg.id_value, msg.id_source,
+                                                     _ttl, _los)
+                                
+                            #create TCP socket and send message
+                            sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+                            sock.settimeout(1) #discovery requester should always be waiting
+                            try:
+                                #ttprint("Connecting",from_addr, from_port)
+                                sock.connect((str(from_addr), from_port,0,from_ifi))
+                                #ttprint("Sending",msg_bytes)
+                                sock.sendall(msg_bytes,0)
+                                ttprint("Sent local response")
+                            except OSError as ex:
+                                tprint("Socket error when sending local discovery Response", ex)
+                            #we don't need this socket again
+                            sock.close()
+                            
+                        else:
+                                                
+                            # Not local - do we have it in the cache?
+                            # We will come here too if test_divert is set
+
+                            #ttprint("Search discovery cache")
+                            
+                            _disc_lock.acquire()
+
+                            #ttprint("Acquired _disc_lock")
+                            
+                            # Can't use a comprehension because we need the actual
+                            # list entry in order to delete it.
+                            ll = False
+                            for i in range(len(_discovery_cache)):
+                                x = _discovery_cache[i]                        
+                                if x.objective.name == oname: #found the objective
+                                    ll = x.asa_locators
+                                    if ll:  #it has not expired
+                                        del(_discovery_cache[i])
+                                        _discovery_cache.append(x)   #make it Most Recently Used                                 
+                                    break   #quit the search
+                            _disc_lock.release()
+                            if ll:
+                                #Build Divert option
+                                ttprint("Build Divert option")
+                                _ttl = 0
+                                divo = [O_DIVERT]
+                                for y in ll:
+                                    #ttprint("Discovery cache entry", y.is_ipaddress, y.locator, y.ifi, y.expire, int(time.monotonic()))
+                                    if y.is_ipaddress:
+                                        if (not y.locator.is_link_local) and \
+                                           (y.expire > int(time.monotonic())): #not LL and not expired                                    
+                                                                       
+                                            #build locator option (only supports IPv6, TCP)
+                                            lo = [O_IPv6_LOCATOR, y.locator.packed, socket.IPPROTO_TCP, y.port]                                    
+                                            divo.append(lo)
+                                            if test_divert:
+                                                break # to avoid duplicates during local testing
+                                    elif y.is_fqdn:
+                                        divo.append([O_FQDN_LOCATOR, y.locator, y.protocol, y.port])
+                                    elif y.is_uri:
+                                        divo.append([O_URI_LOCATOR, y.locator])
+                                    #calculate worst case TTL
+                                    if y.expire > 0:
+                                        if _ttl > 0:
+                                            _ttl = min(int((y.expire - time.monotonic())*1000),_ttl)
+                                        else:
+                                            _ttl = int((y.expire - time.monotonic())*1000)
+                                    
+                                if _ttl == 0:
+                                    _ttl = _discCacheDefTimeOut  
+                                if len(divo)>1:
+                                    #create TCP socket
+                                    sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+                                    sock.settimeout(1) #discovery requester should always be waiting
+                                    try:
+                                        sock.connect((str(from_addr), from_port,0,from_ifi))
+                                        msg_bytes = _ass_message(M_RESPONSE, msg.id_value, msg.id_source,
+                                                                 _ttl, [divo])
+                                        sock.sendall(msg_bytes,0)
+                                        ttprint("Sent divert response")
+                                    except OSError as ex:
+                                        tprint("Socket error when sending divert Response", ex)
+                                    #we don't need this socket again
+                                    sock.close()
+                            else:
+                                #ttprint("Not in discovery cache")
+                                pass
+                    except OSError:
+                        #invalid discovery format - do nothing
+                        tprint("Discovery message has invalid content")
+                elif msg.mtype == M_FLOOD:
+                    ttprint("Got Flood message")
+
+                    lobjs = msg.flood_list  #list of flooded_objective
+
+                    for lo in lobjs:
+                        #construct asa_locator from locator option
+                        if lo.loco:
+                            _locs = _opt_to_asa_loc(lo.loco, None, False)
+                            if len(_locs) == 1:
+                                _loc = _locs[0] #got exactly one locator
+                                if msg.ttl > 0:
+                                    _loc.expire = int(time.monotonic() + msg.ttl/1000)
+                                else:
+                                    _loc.expire = 0
+                            else:
+                                tprint("Anomalous locator in flood ignored")
+                                _loc = asa_locator(None, None, False)
+                        else:
+                            _loc = asa_locator(None, None, False)                        
+
+                        #construct and store objective
+                        obj = lo.obj                      
+                        #ttprint(obj.name,"flood has loop ct",obj.loop_count,"from ifi",from_ifi)
+                        obj = _detag_obj(obj)
+                        if obj.synch: #must be a synch objective
+                            _flood_lock.acquire()
+                            #zap objective if already cached
+                            #zap expired objectives as we go
+                            for j in range(len(_flood_cache)):
+                                if _flood_cache[j].objective.name == obj.name and \
+                                   _flood_cache[j].source.locator == _loc.locator and \
+                                   _flood_cache[j].source.port == _loc.port:
+                                    #found it, zap old version
+                                    _flood_cache[j] = None
+                                    
+                                elif _flood_cache[j].source.expire !=0 and \
+                                     _flood_cache[j].source.expire < int(time.monotonic()):
+                                    #expired entry, zap it
+                                    #ttprint("MC handler expiring flood",_flood_cache[j].objective.name,
+                                    #        _flood_cache[j].source.expire)
+                                    _flood_cache[j] = None
+                                    
+                            #garbage collect
+                            j=0
+                            while j < len(_flood_cache):
+                                if _flood_cache[j] == None:
+                                    del _flood_cache[j]
+                                else:
+                                    j += 1
+                            
+                            #if cache is full, delete oldest
+                            if len(_flood_cache) >= _floodCacheLimit:
+                                del(_flood_cache[0])
+                            #concatenate new one in MRU position
+                            _flood_cache.append(tagged_objective(obj,_loc))    
+                            _flood_lock.release()
+                            #ttprint(obj.name,"flood appended")                            
+                else:
+                    # Some other message such as M_NOOP, drop it
+                    pass
+            except Exception as ex:
+                tprint("Unexpected exception in _mchandler:", ex)
+                traceback.print_exc()
+                #and we just wait for the next multicast message
 
 
 
