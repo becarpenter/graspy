@@ -5,6 +5,10 @@ This repository is for a Python 3 demonstration implementation of GRASP, the Gen
 
 This code IS NOT INTENDED FOR PRODUCTION USE. See the license and disclaimer in the grasp.py source file.
 
+Status on 2019-10-19:
+
+Added QUADS security.
+
 Status on 2019-01-26:
 
 The grasp.py and acp.py modules module have been updated to
