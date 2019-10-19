@@ -1,28 +1,9 @@
-
 """########################################################
 ########################################################
 #                                                     
-# GREMLIN: the GRASP daemon       
-#                                                                            
-# This module is for use in a node that can relay GRASP
-# but is not running any ASA. This version needs no initial
-# dialogue with the user.
-#                                                     
-# Because it's demonstration code written in an       
-# interpreted language, performance is slow.          
-#                                                     
-# SECURITY WARNINGS:                                  
-#  - assumes ACP up on all interfaces (or none)       
-#  - assumes BUT DOES NOT CHECK that layer 2 is secured           
-#  - does not watch for interface up/down changes
-#    (but does handle IPv6 address changes)
-#  - use of QUADS security is highly recommended
-#                                                     
-# LIMITATIONS:                                        
-#  - only coded for IPv6, any IPv4 is accidental
-#  - survival of address changes and CPU sleep/wakeup is patchy          
-#  - workarounds for defects in Python socket module and
-#    Windows socket peculiarities. Not tested on Android.
+# Make a QUADS keyset for GRASP          
+#                                                                                                                                    
+# Module name is 'quadsmaker'
 #
 # Released under the BSD 2-Clause "Simplified" or "FreeBSD"
 # License as follows:
@@ -62,9 +43,63 @@
 ########################################################
 ########################################################"""
 
-import grasp
-print("Starting GRASP daemon without dialogue")
-grasp.skip_dialogue(testing=False, selfing=True, diagnosing=False)
-grasp._initialise_grasp()
-grasp.init_bubble_text("GRASP daemon")
-grasp.tprint("Daemon running")
+import os
+import getpass
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import padding
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+
+
+##########################################
+#                                        #
+# Make a QUADS keyset for GRASP          #
+#                                        #
+##########################################
+
+
+secret_salt = b'\xf4tRj.t\xac\xce\xe1\x89\xf1\xfb\xc1\xc3L\xeb'
+password = None
+confirm = 1
+print("Please enter the GRASP password for the domain.")
+while password != confirm:
+    if os.name!="nt":
+        password = bytes(getpass.getpass(), 'utf-8')
+        confirm = bytes(getpass.getpass("Confirm:"), 'utf-8')      
+    else:
+        #windows
+        print("Password visible on Windows!")
+        password = bytes(input(), 'utf-8')
+        confirm = password
+    if password != confirm:
+        print("Mismatch, try again.")
+
+if password == b'':
+    print("No keys will be generated")
+else:
+    print("Password accepted")
+
+    kdf = PBKDF2HMAC(
+          algorithm=hashes.SHA256(),
+          length=32,
+          salt=secret_salt,
+          iterations=100000,
+          backend=default_backend()
+     )
+
+    backend = default_backend()
+    key = kdf.derive(password)
+    _skip = key[0]%10
+    iv =  key[_skip:_skip+16]
+
+    #print("key="+str(key))
+    #print("iv="+str(iv))
+
+    file = open(r"quadsk.py","w")
+    file.write("key="+str(key)+"\n")
+    file.write("iv="+str(iv)+"\n")
+    file.close()
+    print("quadsk.py saved OK")
+    
+ 

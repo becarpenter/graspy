@@ -20,7 +20,8 @@
 # SECURITY WARNINGS:                                  
 #  - assumes ACP up on all interfaces (or none)       
 #  - doesn't even try wrapping TCP in TLS             
-#  - does not watch for interface up/down changes     
+#  - does not watch for interface up/down changes
+#  - you are strongly recommended to use the built-in QUADS security
 #                                                     
 # LIMITATIONS:                                        
 #  - only coded for IPv6, any IPv4 is accidental
@@ -70,7 +71,7 @@
 ########################################################
 ########################################################"""
 
-_version = "15-BC-20190925"
+_version = "15-BC-20191017"
 
 ##########################################################
 # The following change log records significant changes,
@@ -162,6 +163,8 @@ _version = "15-BC-20190925"
 
 # 20190925 commented out diagnostics for _mchandler hang
 
+# 20191017 added QUADS crypto
+
 
 ##########################################################
 
@@ -228,6 +231,16 @@ except:
     time.sleep(10)
     exit()
 
+#imports for QUADS
+import os
+import getpass
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import padding
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+
+#check for latest ACP
 try:
     acp.new2019()
 except:
@@ -729,6 +742,87 @@ etext = ["OK",
         "Invalid locator"
        ]
 
+#############################################
+#                                           #
+# QUick And Dirty Secrecy for GRASP (QUADS) #
+#                                           #
+#############################################
+
+#Global variables for QUADS
+
+secret_salt = b'\xf4tRj.t\xac\xce\xe1\x89\xf1\xfb\xc1\xc3L\xeb'
+crypto = False
+key = 0
+iv = 0
+cipher = None
+
+def _ini_crypt(_key=None, _iv=None):
+    """Internal use only; gets passsword and enables crypto"""
+    global crypto, key, iv, secret_salt, cipher
+    if not _key:
+        password = None
+        confirm = 1
+        print("Please enter the GRASP password for the domain.")
+        while password != confirm:
+            if os.name!="nt":
+                password = bytes(getpass.getpass(), 'utf-8')
+                confirm = bytes(getpass.getpass("Confirm:"), 'utf-8')      
+            else:
+                #windows
+                print("Password visible on Windows!")
+                password = bytes(input(), 'utf-8')
+                confirm = password
+            if password != confirm:
+                print("Mismatch, try again.")
+
+        if password == b'':
+            print("Encryption off: GRASP is insecure.")
+            return
+        else:
+            print("Password accepted")
+
+        kdf = PBKDF2HMAC(
+              algorithm=hashes.SHA256(),
+              length=32,
+              salt=secret_salt,
+              iterations=100000,
+              backend=default_backend()
+         )
+
+        key = kdf.derive(password)
+        _skip = key[0]%10
+        iv =  key[_skip:_skip+16]
+
+    else:
+        #use configured keys
+        key = _key
+        iv = _iv
+        
+    #print("Keys: ", key, iv)
+    backend = default_backend()
+    cipher = Cipher(algorithms.AES(key), modes.CBC(iv), backend=backend)
+    crypto = True
+    return
+
+def encrypt_msg(raw):
+    """Returns encrypted bytes"""
+    global cipher, crypto
+    if not crypto:
+        return raw
+    padder = padding.PKCS7(128).padder()
+    encryptor = cipher.encryptor()
+    msg = padder.update(raw) + padder.finalize()
+    return encryptor.update(msg) + encryptor.finalize()
+
+def decrypt_msg(crypt):
+    """Returns decrypted bytes"""
+    global cipher, crypto
+    if not crypto:
+        return crypt
+    decryptor = cipher.decryptor()
+    unpadder = padding.PKCS7(128).unpadder()
+    return unpadder.update(decryptor.update(crypt)) + unpadder.finalize()
+
 ####################################
 #                                  #
 # Registration functions           #
@@ -762,6 +856,12 @@ def skip_dialogue(testing=False, selfing=False, diagnosing=False):
     test_mode = testing
     listen_self = selfing
     mess_check = diagnosing
+    try:
+        import quadsk
+        _ini_crypt(_key=quadsk.key,_iv=quadsk.iv)
+    except:
+        print("No cryptography keys installed")
+
 
 
 def register_asa(asa_name):
@@ -1438,7 +1538,7 @@ def _negloop(snonce, obj, timeout, sock, new_request):
                     
             ttprint("negloop: raw reply:", rawmsg)
             try:
-                payload = cbor.loads(rawmsg)
+                payload = cbor.loads(decrypt_msg(rawmsg))
             except:
                 sock.close()
                 _disactivate_session(snonce)
@@ -1903,7 +2003,7 @@ def synchronize(asa_nonce, obj, loc, timeout):
             return errors.noListener, None
         ttprint("Synch: raw reply:", rawmsg)
         try:
-            payload = cbor.loads(rawmsg)
+            payload = cbor.loads(decrypt_msg(rawmsg))
         except:
             _disactivate_session(snonce)
             return errors.CBORfail, None
@@ -2783,7 +2883,7 @@ def _ass_message(msg_type, session_id, initiator, *whatever):
     #Convert to CBOR bytes
     msg_bytes = cbor.dumps(msg)
     ttprint("Assembled CBOR message:",msg_bytes)
-    return msg_bytes
+    return encrypt_msg(msg_bytes)
 
 
 def _detag_obj(x):
@@ -3227,7 +3327,7 @@ class _mclisten(threading.Thread):
                     #and because we can't trust IPV6_MULTICAST_LOOP = 0                    
                         
                     try:
-                        payload = cbor.loads(rawmsg)
+                        payload = cbor.loads(decrypt_msg(rawmsg))
                     except:
                         tprint("Multicast: CBOR decode error")
                         continue
@@ -3305,7 +3405,7 @@ def _relay(payload, msg, ifi):
             news = _session_instance(r_snonce.id_value,True,r_snonce.id_source)
             news.id_relayed = True
             _insert_session(news)
-        msg_bytes = cbor.dumps(payload)
+        msg_bytes = encrypt_msg(cbor.dumps(payload))
         for i in range(len(_ll_zone_ids)):                
             ttprint("Flood relay for", uobj[_Ob_Nam])
             if _ll_zone_ids[i][0] != ifi: # will skip the relay source interface
@@ -3351,7 +3451,7 @@ def _init_drsocks(i):
 
     # Can't use a comprehension because we need the actual
     # list index in order select the correct socket.
-    _msg_bytes = cbor.dumps([M_NOOP]) #No-op message
+    _msg_bytes = encrypt_msg(cbor.dumps([M_NOOP])) #No-op message
     for _ in range(10):
         try:
             _mcssocks[i][1].sendto(_msg_bytes,0,(str(ALL_GRASP_NEIGHBORS_6), GRASP_LISTEN_PORT))
@@ -3413,9 +3513,9 @@ class _drlisten(threading.Thread):
                 else:
                     a = aaddr[0]
                 send_addr=ipaddress.IPv6Address(a)
-                #ttprint("Received TCP", rawmsg, "from", send_addr)
+                #ttprint("Received TCP", decrypt_msg(rawmsg), "from", send_addr)
                 try:
-                    payload = cbor.loads(rawmsg)
+                    payload = cbor.loads(decrypt_msg(rawmsg))
                     ttprint("Received response: CBOR->Python:", payload)
                     msg = _parse_msg(payload)
                     if not msg:
@@ -3722,7 +3822,7 @@ class _tcp_listen(threading.Thread):
                 send_addr=ipaddress.IPv6Address(a)
                 #ttprint("Received TCP", rawmsg, "from", send_addr)
                 try:
-                    payload = cbor.loads(rawmsg)
+                    payload = cbor.loads(decrypt_msg(rawmsg))
                     ttprint("Received request: CBOR->Python:", payload)
                     msg = _parse_msg(payload)
                     if not msg:
@@ -3994,6 +4094,12 @@ def _initialise_grasp():
                     ttprint("WARNING: Will listen to own LL multicasts")
         except:
             pass
+
+        ####################################
+        # Initialise QUADS                 #
+        ####################################
+
+        _ini_crypt()
         
     ####################################
     # Initialise global variables      #
