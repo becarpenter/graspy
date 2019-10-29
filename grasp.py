@@ -71,7 +71,7 @@
 ########################################################
 ########################################################"""
 
-_version = "15-BC-20191017"
+_version = "15-BC-20191028"
 
 ##########################################################
 # The following change log records significant changes,
@@ -164,6 +164,8 @@ _version = "15-BC-20191017"
 # 20190925 commented out diagnostics for _mchandler hang
 
 # 20191017 added QUADS crypto
+
+# 20191025 made all threads daemonic to force proper exit
 
 
 ##########################################################
@@ -762,7 +764,7 @@ def _ini_crypt(_key=None, _iv=None):
     if not _key:
         password = None
         confirm = 1
-        print("Please enter the GRASP password for the domain.")
+        print("Please enter the keying password for the domain.")
         while password != confirm:
             if os.name!="nt":
                 password = bytes(getpass.getpass(), 'utf-8')
@@ -835,7 +837,7 @@ def decrypt_msg(crypt):
 #                                  
 ####################################
 
-def skip_dialogue(testing=False, selfing=False, diagnosing=False):
+def skip_dialogue(testing=False, selfing=False, diagnosing=False, quadsing=True):
     """
 ####################################################################
 # skip_dialogue(testing=False, selfing=False, diagnosing=False)
@@ -856,11 +858,14 @@ def skip_dialogue(testing=False, selfing=False, diagnosing=False):
     test_mode = testing
     listen_self = selfing
     mess_check = diagnosing
-    try:
-        import quadsk
-        _ini_crypt(_key=quadsk.key,_iv=quadsk.iv)
-    except:
-        print("No cryptography keys installed")
+    if quadsing:
+        try:
+            import quadsk
+            _ini_crypt(_key=quadsk.key,_iv=quadsk.iv)
+        except:
+            tprint("No cryptography keys installed")
+    else:
+        tprint("Insecure GRASP instance")
 
 
 
@@ -2091,7 +2096,7 @@ class _synch_listen(threading.Thread):
 # and must not be activated otherwise.             #
 ####################################################
     def __init__(self, obj):
-        threading.Thread.__init__(self)
+        threading.Thread.__init__(self, daemon=True)
         self.obj = obj
         
     def run(self):
@@ -2464,7 +2469,7 @@ def init_bubble_text(cap):
     class bubbler(threading.Thread):
         """Internal use only"""
         def __init__(self, cap):
-            threading.Thread.__init__(self)
+            threading.Thread.__init__(self, daemon=True)
             self.cap = cap
             
         def run(self):
@@ -3288,7 +3293,7 @@ class _mclisten(threading.Thread):
 # This runs as a thread                            #
 ####################################################
     def __init__(self):
-        threading.Thread.__init__(self)
+        threading.Thread.__init__(self, daemon=True)
         
     def run(self):
         global _mc_restart
@@ -3329,13 +3334,13 @@ class _mclisten(threading.Thread):
                     try:
                         payload = cbor.loads(decrypt_msg(rawmsg))
                     except:
-                        tprint("Multicast: CBOR decode error")
+                        ttprint("Multicast: CBOR decode error") #test mode to suppress QUADS warnings
                         continue
                     msg = _parse_msg(payload)
                     if not msg:
                         #invalid message, cannot process it
-                        tprint(payload)
-                        tprint("Multicast: Invalid message format")
+                        ttprint(payload)
+                        ttprint("Multicast: Invalid message format")
                         continue
                     ttprint("Multicast: CBOR->Python:", payload)
                     if msg.mtype in (M_DISCOVERY, M_FLOOD):
@@ -3423,7 +3428,7 @@ def _relay(payload, msg, ifi):
 class _disactivate_flood(threading.Thread):
     """Internal use only"""
     def __init__(self, snonce):
-        threading.Thread.__init__(self)
+        threading.Thread.__init__(self, daemon=True)
         self.snonce = snonce
     def run(self):
         time.sleep(GRASP_DEF_TIMEOUT/500)
@@ -3433,7 +3438,7 @@ class _disactivate_flood(threading.Thread):
 class _disc_relay(threading.Thread):
     """Internal use only"""
     def __init__(self, snonce, obj, ifi):
-        threading.Thread.__init__(self)
+        threading.Thread.__init__(self, daemon=True)
         self.snonce = snonce
         self.obj = obj
         self.ifi = ifi
@@ -3494,7 +3499,7 @@ class _drlisten(threading.Thread):
 # and must not be activated otherwise.             #
 ####################################################
     def __init__(self, sock, ifi):
-        threading.Thread.__init__(self)
+        threading.Thread.__init__(self, daemon=True)
         self.sock = sock
         self.ifi = ifi
     def run(self):
@@ -3556,7 +3561,7 @@ class _mchandler(threading.Thread):
 # Discovery responses.                             #
 ####################################################
     def __init__(self):
-        threading.Thread.__init__(self)
+        threading.Thread.__init__(self, daemon=True)
 
     def run(self):
         global _i_sent_it
@@ -3794,7 +3799,7 @@ class _tcp_listen(threading.Thread):
 # TCP listener thread for synch and negotiate requests  #
 #########################################################
     def __init__(self, listen_sock):
-        threading.Thread.__init__(self)
+        threading.Thread.__init__(self, daemon=True)
         self.listen_sock = listen_sock
 
     def run(self):
@@ -3873,9 +3878,6 @@ class _tcp_listen(threading.Thread):
         self.listen_sock.close()
 # end of TCP listener
 
-
-
-
 class _watcher(threading.Thread):
     """Internal use only"""
 ####################################################
@@ -3889,7 +3891,7 @@ class _watcher(threading.Thread):
 ####################################################
 
     def __init__(self):
-        threading.Thread.__init__(self)
+        threading.Thread.__init__(self, daemon=True)
 
     def run(self):
         global _tls_required
@@ -4098,8 +4100,11 @@ def _initialise_grasp():
         ####################################
         # Initialise QUADS                 #
         ####################################
-
-        _ini_crypt()
+        try:
+            import quadsk
+            _ini_crypt(_key=quadsk.key,_iv=quadsk.iv)
+        except:
+            _ini_crypt() #No cryptography keys installed
         
     ####################################
     # Initialise global variables      #

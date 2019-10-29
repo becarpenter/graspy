@@ -27,7 +27,7 @@
 # Released under the BSD 2-Clause "Simplified" or "FreeBSD"
 # License as follows:
 #                                                     
-# Copyright (C) 2015-2019 Brian E. Carpenter.                  
+# Copyright (C) 2019 Brian E. Carpenter.                  
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with
@@ -63,8 +63,12 @@
 ########################################################"""
 
 import grasp
+import time
 print("Starting GRASP daemon without dialogue")
 grasp.skip_dialogue(testing=False, selfing=True, diagnosing=False)
 grasp._initialise_grasp()
 grasp.init_bubble_text("GRASP daemon")
 grasp.tprint("Daemon running")
+while True:
+    time.sleep(60)
+

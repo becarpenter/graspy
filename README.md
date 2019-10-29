@@ -5,9 +5,9 @@ This repository is for a Python 3 demonstration implementation of GRASP, the Gen
 
 This code IS NOT INTENDED FOR PRODUCTION USE. See the license and disclaimer in the grasp.py source file.
 
-Status on 2019-10-19:
+Status on 2019-10-30:
 
-Added QUADS security.
+Added QUADS security and QUADSKI key infrastructure.
 
 Status on 2019-01-26:
 

@@ -1,14 +1,17 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
 """########################################################
 ########################################################
 #                                                     
-# Make a QUADS keyset for GRASP          
+# Make a QUADS keyset          
 #                                                                                                                                    
 # Module name is 'quadsmaker'
 #
 # Released under the BSD 2-Clause "Simplified" or "FreeBSD"
 # License as follows:
 #                                                     
-# Copyright (C) 2015-2019 Brian E. Carpenter.                  
+# Copyright (C) 2019 Brian E. Carpenter.                  
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with
@@ -54,7 +57,7 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 ##########################################
 #                                        #
-# Make a QUADS keyset for GRASP          #
+# Make a QUADS keyset                    #
 #                                        #
 ##########################################
 
@@ -62,7 +65,7 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 secret_salt = b'\xf4tRj.t\xac\xce\xe1\x89\xf1\xfb\xc1\xc3L\xeb'
 password = None
 confirm = 1
-print("Please enter the GRASP password for the domain.")
+print("Please enter the keying password for the domain.")
 while password != confirm:
     if os.name!="nt":
         password = bytes(getpass.getpass(), 'utf-8')
