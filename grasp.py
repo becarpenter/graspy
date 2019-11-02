@@ -71,7 +71,7 @@
 ########################################################
 ########################################################"""
 
-_version = "15-BC-20191028"
+_version = "15-BC-201911102"
 
 ##########################################################
 # The following change log records significant changes,
@@ -166,6 +166,8 @@ _version = "15-BC-20191028"
 # 20191017 added QUADS crypto
 
 # 20191025 made all threads daemonic to force proper exit
+
+# 20191102 improved password entry code
 
 
 ##########################################################
@@ -766,17 +768,10 @@ def _ini_crypt(_key=None, _iv=None):
         confirm = 1
         print("Please enter the keying password for the domain.")
         while password != confirm:
-            if os.name!="nt":
-                password = bytes(getpass.getpass(), 'utf-8')
-                confirm = bytes(getpass.getpass("Confirm:"), 'utf-8')      
-            else:
-                #windows
-                print("Password visible on Windows!")
-                password = bytes(input(), 'utf-8')
-                confirm = password
+            password = bytes(getpass.getpass(), 'utf-8')
+            confirm = bytes(getpass.getpass("Confirm:" ), 'utf-8')      
             if password != confirm:
                 print("Mismatch, try again.")
-
         if password == b'':
             print("Encryption off: GRASP is insecure.")
             return

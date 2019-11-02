@@ -46,7 +46,6 @@
 ########################################################
 ########################################################"""
 
-import os
 import getpass
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
@@ -67,14 +66,8 @@ password = None
 confirm = 1
 print("Please enter the keying password for the domain.")
 while password != confirm:
-    if os.name!="nt":
-        password = bytes(getpass.getpass(), 'utf-8')
-        confirm = bytes(getpass.getpass("Confirm:"), 'utf-8')      
-    else:
-        #windows
-        print("Password visible on Windows!")
-        password = bytes(input(), 'utf-8')
-        confirm = password
+    password = bytes(getpass.getpass(), 'utf-8')
+    confirm = bytes(getpass.getpass("Confirm: "), 'utf-8')      
     if password != confirm:
         print("Mismatch, try again.")
 

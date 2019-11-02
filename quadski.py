@@ -161,6 +161,10 @@ except:
         time.sleep(10)
         exit()
 
+grasp.tprint("==========================")
+grasp.tprint("QUADS key infrastructure is starting up.")
+grasp.tprint("==========================")
+
 ###################################
 # Get the domain pledge password
 ###################################
@@ -169,30 +173,22 @@ print("Please enter the password that pledges will use to join the domain.")
 password =0
 confirm = 1
 while password != confirm:
-    if os.name!="nt":
-        password = bytes(getpass.getpass(), 'utf-8')
-        confirm = bytes(getpass.getpass("Confirm:"), 'utf-8')      
-    else:
-        #windows
-        print("Password visible on Windows!")
-        password = bytes(input(), 'utf-8')
-        confirm = password
+    password = bytes(getpass.getpass(), 'utf-8')
+    confirm = bytes(getpass.getpass("Confirm: "), 'utf-8')      
     if password != confirm:
         print("Mismatch, try again.")
-
-grasp.tprint("==========================")
-grasp.tprint("QUADS key infrastructure is starting up.")
-grasp.tprint("==========================")
 
 
 ####################################
 # General initialisation
 ####################################
 
-time.sleep(8) # so the user can read the text
+#time.sleep(8) # so the user can read the text
 
 #this instance of GRASP must run unencrypted
 grasp.skip_dialogue(selfing=True,quadsing=False)
+
+#grasp.tprint("Encryption", grasp.crypto, "(should be False)")
 
 ####################################
 # Register ASA/objectives
@@ -270,6 +266,7 @@ grasp.tprint("Flooding", flood_obj.name, "for ever")
 ###################################
 
 while True:
+    #grasp.tprint("Encryption", grasp.crypto, "(should be False)")
     # listen for negotiation request
     err, snonce, request = grasp.listen_negotiate(asa_nonce, keys_obj)
     if err:

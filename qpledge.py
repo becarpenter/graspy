@@ -55,12 +55,27 @@ import sys
 import grasp
 import time
 import cbor
+import getpass
 
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
 
+###################################
+# Function to input password
+###################################
 
+def get_pass():
+    global password
+    print("Please enter the pledge password for the domain.")
+    password =0
+    confirm = 1
+    while password != confirm:
+        password = bytes(getpass.getpass(), 'utf-8')
+        confirm = bytes(getpass.getpass("Confirm: "), 'utf-8')      
+        if password != confirm:
+            print("Mismatch, try again.")
+            
 ###################################
 # Function to negotiate as initiator
 # to get QUADS keys
@@ -72,7 +87,6 @@ def get_file():
     global failct
     global private_key
 
-
     #look for quadski
 
     err, results = grasp.get_flood(asa_nonce, flood_obj)
@@ -81,7 +95,8 @@ def get_file():
         # but really there should only be one...     
         if results == []:
             grasp.tprint("Found no value for",flood_obj.name)
-            return #not this time
+            time.sleep(10) #pause for something to change...
+            return
         else:
             grasp.tprint("Found value for",flood_obj.name)
         # recover quadski's public key
@@ -96,8 +111,8 @@ def get_file():
     ciphertext = quadski_pub_key.encrypt(
                     password,
                     padding.OAEP(
-                        mgf=padding.MGF1(algorithm=hashes.SHA1()),
-                        algorithm=hashes.SHA1(),
+                        mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                        algorithm=hashes.SHA256(),
                         label=None))
     keys_obj.value = [ciphertext,pem] 
     
@@ -126,9 +141,12 @@ def get_file():
             _e = received_obj
         else:
             _e = grasp.etext[err]
-        grasp.tprint("req_negotiate error:", _e)
+        grasp.tprint("Negotiation error:", _e)
         failct += 1
         grasp.tprint("Fail count", failct)
+        if _e == "Incorrect password":
+            get_pass()
+            return 
     elif (not err) and snonce:
         grasp.ttprint("requested, session_nonce:",snonce,"received_obj",received_obj)
         grasp.ttprint("Received raw reply",received_obj.value)
@@ -141,8 +159,8 @@ def get_file():
             plaintext = private_key.decrypt(
                      received_obj.value,
                      padding.OAEP(
-                     mgf=padding.MGF1(algorithm=hashes.SHA1()),
-                     algorithm=hashes.SHA1(),
+                     mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                     algorithm=hashes.SHA256(),
                      label=None))
             keys = cbor.loads(plaintext)
             key = keys[0]
@@ -160,7 +178,9 @@ def get_file():
         grasp.tprint("Unexpected reply", received_obj.value)
 
     #end of a negotiating session
+    time.sleep(10) #pause for something to change...
     return
+
 ###################################
 # Utility function
 ###################################
@@ -171,24 +191,11 @@ def in_idle():
     except AttributeError:
         return False
 
-print("Please enter the pledge password for the domain.")
-password =0
-confirm = 1
-while password != confirm:
-    if os.name!="nt":
-        password = bytes(getpass.getpass(), 'utf-8')
-        confirm = bytes(getpass.getpass("Confirm:"), 'utf-8')      
-    else:
-        #windows
-        print("Password visible on Windows!")
-        password = bytes(input(), 'utf-8')
-        confirm = password
-    if password != confirm:
-        print("Mismatch, try again.")
-
 grasp.tprint("========================")
 grasp.tprint("QUADS pledge is starting up.")
 grasp.tprint("========================")
+
+get_pass()
 
 try:
     os.remove("quadsk.py")
@@ -264,7 +271,6 @@ grasp.tprint("Ready to negotiate", keys_obj.name,"as requester")
 
 get_file()
 while not os.path.isfile("quadsk.py"):
-    time.sleep(10)
     get_file()
     
 grasp.tprint("Installed new key file")
