@@ -169,6 +169,8 @@ _version = "15-BC-201911102"
 
 # 20191102 improved password entry code
 
+# 20191113 added gsend() and grecv()
+
 
 ##########################################################
 
@@ -703,6 +705,7 @@ class _error_codes:
         self.noSynchReply = 36 #"No reply to synchronization request"
         self.noValidSynch = 37 #"No valid reply to synchronization request"
         self.invalidLoc = 38 #"Invalid locator"
+        self.sockErr = 39  #"Socket error sending gmessage"
 errors = _error_codes()
 
 etext = ["OK",
@@ -744,6 +747,7 @@ etext = ["OK",
         "No reply to synchronization request",
         "No valid reply to synchronization request",
         "Invalid locator"
+        "Socket error sending gmessage"
        ]
 
 #############################################
@@ -1335,7 +1339,7 @@ def _drloop(ifi,ttl,options,rec_obj,obj,inDivert):
 
 
 
-def req_negotiate(asa_nonce, obj, peer, timeout):
+def req_negotiate(asa_nonce, obj, peer, timeout, noloop=False):
     """
 ##############################################################
 # req_negotiate(asa_nonce, objective, peer, timeout)
@@ -1353,6 +1357,8 @@ def req_negotiate(asa_nonce, obj, peer, timeout):
 # If peer is None, discovery is performed first.
 #
 # timeout in milliseconds (None for default)
+#
+# nloop=True in order to use gsend() and grecv() for this session
 #
 # Launch in a new thread if asynchronous operation required.
 #
@@ -1421,6 +1427,17 @@ def req_negotiate(asa_nonce, obj, peer, timeout):
         sock.close()
         _disactivate_session(snonce)
         return errors.sockErrNegRq, None, None
+
+    if noloop:
+        # user wants to use session for grecv()/gsend()
+        # first operation for this socket - hang it onto session
+        #  - this is normally done by _negloop()
+        sess = _get_session(snonce)
+        if not sess:
+            return errors.noSession, None, None
+        sess.id_sock = sock
+        _update_session(sess)
+        return errors.noReply, snonce, None
     
     # call common code to wait for reply and handle it
     return _negloop(snonce, obj, timeout, sock, True)
@@ -1885,6 +1902,98 @@ def stop_negotiate(asa_nonce, obj):
             x.listening = 0
     _obj_lock.release() 
     return errors.ok
+
+def gsend(asa_nonce, snonce, message):
+    """
+##############################################################
+# gsend(asa_nonce, snonce, message)
+#
+# Sends over the socket for an opened negotiation session
+#
+# message is a Python object. 
+#
+# return zero if successful
+# return errorcode if failure
+##############################################################
+"""
+    # check that the calling ASA is registered
+    if _no_nonce(asa_nonce):
+        return errors.noASA
+    # check that GRASP is running securely
+    if not _secure:
+        return errors.noSecurity
+    #verify session
+    s = _get_session(snonce)
+    if not s:
+        return errors.noSession
+    #retrieve the socket
+    sock = s.id_sock
+    if sock == None:
+        return errors.noSocket
+    else:
+        #Convert message to CBOR, encrypt, and send
+        try:
+            #Convert message to CBOR, encrypt, and send
+            sock.sendall(encrypt_msg(cbor.dumps(message)),0)
+            return errors.ok
+        except OSError as ex:
+            ttprint("Socket error in gsend", ex)
+            sock.close()
+            _disactivate_session(snonce)
+            return errors.sockErr
+
+def grecv(asa_nonce, snonce, timeout):
+    """
+##############################################################
+# grecv(asa_nonce, snonce, timeout)
+#
+# Receives over the socket for an opened negotiation session
+#
+# return zero, message if successful
+#     message is a Python object. 
+# return errorcode, None if failure
+##############################################################
+"""
+    # check that the calling ASA is registered
+    if _no_nonce(asa_nonce):
+        return errors.noASA, None
+    # check that GRASP is running securely
+    if not _secure:
+        return errors.noSecurity, None
+    #verify session
+    s = _get_session(snonce)
+    if not s:
+        return errors.noSession, None
+    #retrieve the socket
+    sock = s.id_sock
+    if sock == None:
+        return errors.noSocket, None
+    else:
+        try:
+            sock.settimeout(timeout/1000)
+            rawmsg, send_addr = _recvraw(sock)
+                    
+            if len(rawmsg) == 0:
+                sock.close()
+                _disactivate_session(snonce)
+                return errors.noPeer, None
+                    
+            ttprint("grecv: raw reply:", rawmsg)
+            try:
+                payload = cbor.loads(decrypt_msg(rawmsg))
+            except:
+                sock.close()
+                _disactivate_session(snonce)
+                return errors.CBORfail, None
+            ttprint("grecv: CBOR->Python:", payload)
+            return errors.ok, payload
+
+        except OSError as ex:
+            sock.close()
+            _disactivate_session(snonce)
+            ttprint("Socket error receiving gmessage", ex)
+            return errors.noReply, None
+    
 
 
 ####################################
