@@ -5,6 +5,10 @@ This repository is for a Python 3 demonstration implementation of GRASP, the Gen
 
 This code IS NOT INTENDED FOR PRODUCTION USE. See the license and disclaimer in the grasp.py source file.
 
+Status on 2019-11-14:
+
+Added gsend() and grecv(), a messaging channel over a GRASP session
+
 Status on 2019-10-30:
 
 Added QUADS security and QUADSKI key infrastructure.
