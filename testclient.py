@@ -7,7 +7,7 @@ import time
 grasp.tprint("==========================")
 grasp.tprint("ASA TestClient is starting up.")
 grasp.tprint("==========================")
-grasp.tprint("Talker is a demonstration Autonomic Service Agent.")
+grasp.tprint("TestClient is a demonstration Autonomic Service Agent.")
 grasp.tprint("It just tests out gsend() and grecv() by talking to its peer")
 grasp.tprint("On Windows or Linux, there should be a nice window")
 grasp.tprint("that displays the talking process.")
