@@ -80,10 +80,10 @@ def check_sig(j,sig):
     cmd = ['openssl', 'cms', '-verify', '-in',
             pfile, '-inform', 'DER', '-content',
             mfile, '-binary']
-    if CAfile:
+    if 'CAfile' in globals():
         cmd.append('-CAfile')
         cmd.append(CAfile)
-    elif CApath:
+    elif 'CApath' in globals():
         cmd.append('-CApath')
         cmd.append(CApath)
     x = run(cmd)
@@ -180,10 +180,10 @@ grasp.tprint("On Windows or Linux, there should be a nice window")
 grasp.tprint("that displays the process.")
 grasp.tprint("==========================")
 
-grasp.tprint("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-grasp.tprint("This code requires you to set CAfile or CApath")
-grasp.tprint("in the source code. Sorry about the hack.")
-grasp.tprint("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+grasp.tprint("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+grasp.tprint("You may need to set CAfile or CApath in the")
+grasp.tprint("source code. Sorry about the hack.")
+grasp.tprint("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
 
 #grasp.test_mode = True # set if you want detailed diagnostics
 time.sleep(8) # so the user can read the text
