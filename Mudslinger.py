@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-"""Demo MUD target node using GRASP. See graspy.py for licence and disclaimers."""
+"""Demo MUD thing using GRASP. See grasp.py for licence and disclaimers."""
 
 import grasp
 import time
@@ -12,6 +12,7 @@ import ipaddress
 ###################################
 
 def dump_some():
+    """Dumps some GRASP internals for debugging."""
     grasp.tprint("Objective registry contents:")         
     for x in grasp._obj_registry:
         o= x.objective
@@ -105,7 +106,7 @@ while True:
         grasp.tprint("req_negotiate error:", _e)
         failct += 1
         grasp.tprint("Fail count", failct)
-        time.sleep(5) #to calm things if there's a looping error
+        #time.sleep(5) #to calm things if there's a looping error
     elif (not err) and snonce:
         grasp.ttprint("requested, session_nonce:",snonce,"answer",answer)
         grasp.tprint("Unexpected reply:", answer.value)
@@ -123,6 +124,5 @@ while True:
     #time.sleep(5) #to keep things calm...
     if grasp.test_mode:
         dump_some()
-grasp.tprint("Will exit in one minute")
-time.sleep(60)
+
 

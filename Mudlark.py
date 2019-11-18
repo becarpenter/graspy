@@ -1,7 +1,20 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-"""Demo MUD manager using GRASP. See graspy.py for licence and disclaimers."""
+"""Demo MUD manager using GRASP. See grasp.py for licence and disclaimers."""
+
+###################################################
+###################################################
+# Patch in here the full path of the CA file
+# (a PEM file) or the full CA path.
+# DO NOT set both CAfile and CApath.
+# Set NEITHER to use the default OpenSSL cert store.
+###################################################
+# CAfile = '<your CA file path here>'
+CAfile = 'C:/OpenSSL-Win64/certs/ascertia-root.pem'
+# CApath = '<your CA directory path here>'
+###################################################
+###################################################
 
 import grasp
 import threading
@@ -9,12 +22,26 @@ import time
 import ipaddress
 import requests
 import json
+import os
+from subprocess import run
+
+try:
+    run(['openssl', 'exit'])
+except:
+    print('OpenSSL is not in the system path.')
+    print('Due to the inadequate OpenSSL support in')
+    print('Python, you need to install OpenSSL and')
+    print('add it to the system path, probably followed')
+    print('by a system restart. Goodbye.')
+    time.sleep(10)
+    exit()
 
 ###################################
 # Print obj_registry and flood cache
 ###################################
 
 def dump_some():
+    """Dumps some GRASP internals for debugging."""
     grasp.tprint("Objective registry contents:")         
     for x in grasp._obj_registry:
         o= x.objective
@@ -25,16 +52,90 @@ def dump_some():
         grasp.tprint(x.objective.name,"count:",x.objective.loop_count,"value:",
                      x.objective.value,"source",x.source)
     time.sleep(5)
+    
+
+###################################
+# Check MUD signature (via a call
+# out to OpenSSL)
+###################################
+
+cwd = os.getcwd().replace('\\','/')
+
+def check_sig(j,sig):
+    """ j is the MUD file (JSON) to be validated,
+        sig is the URL of the signature file,
+        return True if verified, else False."""
+    mfile = cwd+"/mud.mud"
+    file = open(mfile, "wb")
+    file.write(j)
+    file.close()
+    try:
+        pfile = cwd+"/p7s.p7s"
+        p7s = requests.get(sig).content
+        file = open(pfile, "wb")
+        file.write(p7s)
+        file.close()
+    except:
+        grasp.tprint("Couldn't fetch signature file")
+        return False
+    cmd = ['openssl', 'cms', '-verify', '-in',
+            pfile, '-inform', 'DER', '-content',
+            mfile, '-binary']
+    if CAfile:
+        cmd.append('-CAfile')
+        cmd.append(CAfile)
+    elif CApath:
+        cmd.append('-CApath')
+        cmd.append(CApath)
+    x = run(cmd)
+    grasp.ttprint(x)
+    try:
+        os.remove(mfile)
+        os.remove(pfile)
+    except:
+        pass
+    if x.returncode != 0:
+        return False
+    else:
+        return True
+
 
 ####################################
-# Support function for negotiator
+# Support functions for negotiator
 ####################################
 
 def endit(snonce, r):
+    """Crash out of a negotiation"""
     grasp.tprint("Failed", r)
     err = grasp.end_negotiate(asa_nonce, snonce, False, reason=r)
     if err:
         grasp.tprint("end_negotiate error:",grasp.etext[err])
+
+def process_MUD_URL(url):
+    """Process a MUD URL"""
+    grasp.tprint("Processing MUD URL now")
+    try:
+        k = requests.get(answer.value).content
+        j = json.loads(k.decode())
+    except:                
+        grasp.tprint("Faulty URL or faulty JSON")
+        return #from thread
+    #got valid JSON, now do some example parsing
+    try:
+        grasp.tprint(j['ietf-mud:mud']['last-update'],j['ietf-mud:mud']['systeminfo'])
+    except:
+        grasp.tprint("Faulty MUD file")
+        return #from thread
+    try:
+        sig = j['ietf-mud:mud']['mud-signature']
+    except:
+        grasp.tprint("Warning: unsigned MUD file")
+        return #from thread
+    grasp.tprint("Signature at",sig)
+    if check_sig(k, sig):
+        grasp.tprint("Signature verified")
+    else:
+        grasp.tprint("Signature invalid")
 
 ####################################
 # Thread to handle a MUDURL negotiation
@@ -60,28 +161,13 @@ class negotiator(threading.Thread):
         #could do other sanity checks
         else:
             #sanity checks passed
-            #Here the MUD manager will process the URL
-            grasp.tprint("Processing MUD URL now")
-            try:
-                j = json.loads(requests.get(answer.value).content.decode())
-                #got valid JSON, now do some example parsing
-                try:
-                    grasp.tprint(j['ietf-mud:mud']['last-update'],j['ietf-mud:mud']['systeminfo'])
-                except:
-                    grasp.tprint("Faulty MUD file")
-                try:
-                    sig = j['ietf-mud:mud']['mud-signature']
-                    grasp.tprint("Signature at",sig)
-                except:
-                    grasp.tprint("Warning: unsigned MUD file")
-            except:                
-                grasp.tprint("Faulty URL or faulty JSON")
-            #time.sleep(1)
-            #we do not signal a result to the peer
+            #Now the MUD manager can process the URL
+            process_MUD_URL(answer.value)            
+
+            #close the session normally (with no feedback to peer)
             err = grasp.end_negotiate(asa_nonce, snonce, True)
             if err:
-                grasp.tprint("end_negotiate error:",grasp.etext[err])
-            
+                grasp.tprint("end_negotiate error:",grasp.etext[err])       
          #end of a negotiating session
 
 grasp.tprint("==========================")
@@ -94,6 +180,11 @@ grasp.tprint("acts as a MUD manager per RFC8520.")
 grasp.tprint("On Windows or Linux, there should be a nice window")
 grasp.tprint("that displays the process.")
 grasp.tprint("==========================")
+
+grasp.tprint("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+grasp.tprint("This code requires you to set CAfile or CApath")
+grasp.tprint("in the source code. Sorry about the hack.")
+grasp.tprint("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
 
 #grasp.test_mode = True # set if you want detailed diagnostics
 time.sleep(8) # so the user can read the text
