@@ -6,12 +6,11 @@
 ###################################################
 ###################################################
 # Patch in here the full path of the CA file
-# (a PEM file) or the full CA path.
+# (a PEM file) or the full CA directory path.
 # DO NOT set both CAfile and CApath.
 # Set NEITHER to use the default OpenSSL cert store.
 ###################################################
 # CAfile = '<your CA file path here>'
-CAfile = 'C:/OpenSSL-Win64/certs/ascertia-root.pem'
 # CApath = '<your CA directory path here>'
 ###################################################
 ###################################################
