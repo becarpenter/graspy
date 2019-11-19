@@ -5,14 +5,17 @@
 
 ###################################################
 ###################################################
-# Patch in here the full path of the CA file
-# (a PEM file) or the full CA directory path.
+# The code attempts to find a MUD certificate store
+# (which may be created by Mudvault.py)
+# If that fails, patch in here the full path of the
+# CA file (a PEM file) or the CA directory path.
 # DO NOT set both CAfile and CApath.
-# Set NEITHER to use the default OpenSSL cert store.
 ###################################################
 # CAfile = '<your CA file path here>'
 # CApath = '<your CA directory path here>'
 ###################################################
+# Typical location for CAfile on Windows is
+# C:/OpenSSL-Win64/certs/mud-certs.pem
 ###################################################
 
 import grasp
@@ -24,16 +27,6 @@ import json
 import os
 from subprocess import run
 
-try:
-    run(['openssl', 'exit'])
-except:
-    print('OpenSSL is not in the system path.')
-    print('Due to the inadequate OpenSSL support in')
-    print('Python, you need to install OpenSSL and')
-    print('add it to the system path, probably followed')
-    print('by a system restart. Goodbye.')
-    time.sleep(10)
-    exit()
 
 ###################################
 # Print obj_registry and flood cache
@@ -51,6 +44,18 @@ def dump_some():
         grasp.tprint(x.objective.name,"count:",x.objective.loop_count,"value:",
                      x.objective.value,"source",x.source)
     time.sleep(5)
+
+###################################
+# Support function
+###################################
+
+def no_CAfile(msg):
+    """Support function for CAfile discovery failure"""
+    print(msg)
+    print("You need to set CAfile or CApath in the")
+    print("source code. Sorry about the hack.")
+    time.sleep(10)
+    exit()
     
 
 ###################################
@@ -169,6 +174,39 @@ class negotiator(threading.Thread):
                 grasp.tprint("end_negotiate error:",grasp.etext[err])       
          #end of a negotiating session
 
+####################################
+# Main program starts here
+####################################
+
+# Check OpenSSL status
+
+try:
+    run(['openssl', 'exit'])
+except:
+    print('OpenSSL is not in the system path.')
+    print('Due to the inadequate OpenSSL support in')
+    print('Python, you need to install OpenSSL and')
+    print('add it to the system path, probably followed')
+    print('by a system restart. Goodbye.')
+    time.sleep(10)
+    exit()
+
+# Find MUD cert file if needed
+
+if (not 'CAfile' in globals()) and (not 'CApath' in globals()):
+    syspath = os.environ['PATH']
+    if 'OpenSSL' in syspath:
+        syspath = syspath.replace('\\','/')
+        head,tail = syspath.split('OpenSSL', maxsplit=1)
+        _,_,head = head.rpartition(';')
+        tail,_ = tail.split('/', maxsplit=1)
+        CAfile = head+'OpenSSL'+tail+"/certs/mud-certs.pem"
+        if not os.path.exists(CAfile):
+            no_CAfile("Cannot find "+CAfile)        
+    else:
+        no_CAfile("Cannot find OpenSSL directory")
+ 
+
 grasp.tprint("==========================")
 grasp.tprint("ASA Mudlark is starting up.")
 grasp.tprint("==========================")
@@ -179,11 +217,6 @@ grasp.tprint("acts as a MUD manager per RFC8520.")
 grasp.tprint("On Windows or Linux, there should be a nice window")
 grasp.tprint("that displays the process.")
 grasp.tprint("==========================")
-
-grasp.tprint("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-grasp.tprint("You may need to set CAfile or CApath in the")
-grasp.tprint("source code. Sorry about the hack.")
-grasp.tprint("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
 
 #grasp.test_mode = True # set if you want detailed diagnostics
 time.sleep(8) # so the user can read the text
