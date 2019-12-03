@@ -194,17 +194,22 @@ except:
 # Find MUD cert file if needed
 
 if (not 'CAfile' in globals()) and (not 'CApath' in globals()):
-    syspath = os.environ['PATH']
-    if 'OpenSSL' in syspath:
-        syspath = syspath.replace('\\','/')
-        head,tail = syspath.split('OpenSSL', maxsplit=1)
-        _,_,head = head.rpartition(';')
-        tail,_ = tail.split('/', maxsplit=1)
-        CAfile = head+'OpenSSL'+tail+"/certs/mud-certs.pem"
+    if os.name == 'nt':
+        syspath = os.environ['PATH']
+        if 'OpenSSL' in syspath:
+            syspath = syspath.replace('\\','/')
+            head,tail = syspath.split('OpenSSL', maxsplit=1)
+            _,_,head = head.rpartition(';')
+            tail,_ = tail.split('/', maxsplit=1)
+            CAfile = head+'OpenSSL'+tail+"/certs/mud-certs.pem"
+            if not os.path.exists(CAfile):
+                no_CAfile("Cannot find "+CAfile)        
+        else:
+            no_CAfile("Cannot find OpenSSL directory")
+    else: #assume Linux
+        CAfile = '/etc/ssl/certs/mud-certs.pem'
         if not os.path.exists(CAfile):
-            no_CAfile("Cannot find "+CAfile)        
-    else:
-        no_CAfile("Cannot find OpenSSL directory")
+            no_CAfile("Cannot find "+CAfile)
  
 
 grasp.tprint("==========================")

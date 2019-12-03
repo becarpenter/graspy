@@ -71,7 +71,7 @@
 ########################################################
 ########################################################"""
 
-_version = "15-BC-201911114"
+_version = "15-BC-20191203"
 
 ##########################################################
 # The following change log records significant changes,
@@ -4287,7 +4287,7 @@ def _initialise_grasp():
         _x = struct.pack('!L', _prng.randint(0, 2147483647)) #32 bits of randomness
         _session_locator = ipaddress.IPv6Address(_p+_x)
     else:
-        if not (_my_address.is_private and not _my_address.is_link_local):
+        if not acp.is_ula(_my_address):
             tprint("WARNING: address is not ULA")
         _session_locator = _my_address
         

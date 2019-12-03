@@ -83,6 +83,8 @@
 # 20190721 handle netifaces import better
 #
 # 20190925 remove test for 'lo' in Posix branch
+#
+# 20191203 correct test for ULA
 
 import os
 import socket
@@ -145,6 +147,12 @@ def _find_windows_loopbacks():
                 _, ifi = line.split('%')
                 _loopbacks.append(int(ifi))
 
+def is_ula(a):
+    """Test for ULA"""
+    return (a.is_private and not a.is_link_local
+             and not a.is_loopback
+             and not a.is_unspecified)
+
 def _get_my_address(build_zone=False):
     """Get current address and build zone array"""
 ####################################################
@@ -183,7 +191,7 @@ def _get_my_address(build_zone=False):
                     # Now test for GRUA or ULA address
                     if _loc.is_global and not _new_locator:
                         _new_locator = _loc # save first GRUA
-                    if (_loc.is_private and not _loc.is_link_local) and not _new_ULA:
+                    if is_ula(_loc) and not _new_ULA:
                         _new_ULA = _loc  # save first ULA
         if _new_ULA:
             _new_locator = _new_ULA       # prefer ULA
@@ -225,7 +233,7 @@ def _get_my_address(build_zone=False):
                             # Now test for GRUA or ULA address
                             if _loc.is_global and not _new_locator:
                                 _new_locator = _loc # save first GRUA
-                            if (_loc.is_private and not _loc.is_link_local) and not _new_ULA:
+                            if is_ula(_loc) and not _new_ULA:
                                 _new_ULA = _loc  # save first ULA
                 if _new_ULA:
                     _new_locator = _new_ULA       # prefer ULA

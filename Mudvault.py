@@ -14,6 +14,9 @@ def out(reason):
     print(reason)
     time.sleep(10)
     exit()
+if os.name != 'nt':
+    if os.getuid():
+        out('You must have root privilege to run this program, e.g. sudo python3 Mudvault.py')    
 
 print('This program will add a PEM format certificate file to the MUD vault.')
 print('Please select a file in the dialog box...')
@@ -33,18 +36,22 @@ x = run(cmd)
 #print(x)
 if x.returncode != 0:
     out("PEM file invalid")
-
-syspath = os.environ['PATH']
-if 'OpenSSL' in syspath:
-    syspath = syspath.replace('\\','/')
-    head,tail = syspath.split('OpenSSL', maxsplit=1)
-    _,_,head = head.rpartition(';')
-    tail,_ = tail.split('/', maxsplit=1)
-    CAfile = head+'OpenSSL'+tail+"/certs/mud-certs.pem"
+if os.name == 'nt':
+    syspath = os.environ['PATH']
+    if 'OpenSSL' in syspath:
+        syspath = syspath.replace('\\','/')
+        head,tail = syspath.split('OpenSSL', maxsplit=1)
+        _,_,head = head.rpartition(';')
+        tail,_ = tail.split('/', maxsplit=1)
+        CAfile = head+'OpenSSL'+tail+"/certs/mud-certs.pem"
+        if not os.path.exists(CAfile):
+            print("Will create vault at "+CAfile)
+    else:
+        out("Cannot find OpenSSL directory")
+else:  #assume Linux
+    CAfile = '/etc/ssl/certs/mud-certs.pem'
     if not os.path.exists(CAfile):
         print("Will create vault at "+CAfile)
-else:
-    out("Cannot find OpenSSL directory")
 
 file = open(CAfile,"a")
 file.write(pem)
