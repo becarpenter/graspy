@@ -71,7 +71,7 @@
 ########################################################
 ########################################################"""
 
-_version = "15-BC-20191203"
+_version = "15-BC-20200408"
 
 ##########################################################
 # The following change log records significant changes,
@@ -170,6 +170,8 @@ _version = "15-BC-20191203"
 # 20191102 improved password entry code
 
 # 20191113 added gsend() and grecv()
+
+# 20200408 fixed historic bug in flood()
 
 
 ##########################################################
@@ -2340,7 +2342,8 @@ def flood(asa_nonce, ttl, *tagged_obj):
         elif x.source.locator == None:
             _l = [] # empty option            
         elif x.source.is_ipaddress:
-            if tname(x.source) == 'IPv6Address':
+            #ttprint("Tagged obj source",x.source.locator, tname(x.source.locator))
+            if tname(x.source.locator) == 'IPv6Address':  #fixed 20200408
                 _l = [O_IPv6_LOCATOR, x.source.locator.packed, x.source.protocol, x.source.port]
             else:
                 _l = [O_IPv4_LOCATOR, x.source.locator.packed, x.source.protocol, x.source.port]
