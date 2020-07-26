@@ -285,7 +285,7 @@ class negotiator(threading.Thread):
 
 ###################################
 # Thread to delegate prefixes to clients.
-# (Not activated in the master)
+# (Not activated in the origin)
 #
 # This version is a simulation. At random
 # intervals, it gets a prefix from the
@@ -395,10 +395,10 @@ ppool = [] #empty pool
 pool_lock = threading.Lock()
 
 need = 0   #needed prefixes (counted in /'subnet_length's)
-           #not relevant in master
+           #not relevant in origin
     
 def create_pool():
-    """makes a prefix pool, called only in master"""
+    """makes a prefix pool, called only in origin"""
     #This is only for demonstration. A real version
     #would input a prefix from the NOC by some mechanism TBD
     #and would need to save persistent state
@@ -649,7 +649,7 @@ time.sleep(8) # so the user can read the text
 # Set some control variables to default values
 ####################################
 
-master = False
+origin = False
 subnet_default = 64
 subnet_max = 96
 subnet_min = 48
@@ -657,17 +657,17 @@ subnet_length = subnet_default
 
 ####################################
 # Input mode etc. from user
-# If master, create initial pool
+# If origin, create initial pool
 ####################################
 
 try:
-    _ = input("Act as master? Y/N:")
+    _ = input("Act as origin? Y/N:")
     if _[0] == "Y" or _[0] =="y":
-        master = True
+        origin = True
 except:
     pass
 
-if master:
+if origin:
     grasp.tprint("This ASA will provide an initial prefix pool.")
     grasp.tprint("Also, it will supply default parameters for other ASAs.")
     try:
@@ -680,10 +680,10 @@ if master:
     if subnet_length < subnet_min:
         subnet_length = subnet_min
     grasp.tprint("Using allowed IPv6 subnet length", subnet_length)
-    subnet_unit = subnet_default #master always counts in default size
+    subnet_unit = subnet_default #origin always counts in default size
     create_pool()
     dump_pool()
-    btext = "Pfxm3 Master"
+    btext = "Pfxm3 Origin"
 
 else:
     grasp.tprint("This ASA will start with an empty prefix pool.")
@@ -744,7 +744,7 @@ obj2 = grasp.objective("PrefixManager.Params")
 obj2.loop_count = 4
 obj2.synch = True
 
-if master:
+if origin:
     _err = grasp.register_obj(asa_nonce,obj2)
     if not _err:
         grasp.tprint("Objective", obj2.name, "registered OK")
@@ -764,7 +764,7 @@ grasp.init_bubble_text(btext)
 # flooding and listening for synch requests
 ####################################
 
-if master:
+if origin:
     # Arbitrary parameter values for demo only
     obj2.value =  [[["role", "RSG"],["prefix_length", 34]],
                    [["role", "ASG"],["prefix_length", 44]],
@@ -826,10 +826,10 @@ if master:
 main_negotiator().start()
 
 ###################################
-# Get parameters (if not master)
+# Get parameters (if not origin)
 ###################################
 
-if not master:
+if not origin:
     grasp.tprint("Attempting to obtain prefix management parameters")
     err, param_obj = grasp.synchronize(asa_nonce, obj2, None, 3000)
     if not err:
