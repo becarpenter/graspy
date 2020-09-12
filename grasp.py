@@ -71,11 +71,11 @@
 ########################################################
 ########################################################"""
 
-_version = "15-BC-20200408"
+_version = "15-BC-20200913"
 
 ##########################################################
 # The following change log records significant changes,
-# not small bug fixes.
+# not small bug fixes in older versions.
 
 # Version 05 added proto/port to discovery responses
 
@@ -172,6 +172,8 @@ _version = "15-BC-20200408"
 # 20191113 added gsend() and grecv()
 
 # 20200408 fixed historic bug in flood()
+
+# 20200913 improved interaction between acp.status() and security checks
 
 
 ##########################################################
@@ -507,8 +509,9 @@ A GRASP option:
 
 _grasp_initialised = False #true after GRASP core has been initialised
 _skip_dialogue = False     #true if ASA calls grasp.skip_dialogue
-# _tls_required       #true if no ACP
-# _secure             #true if either ACP or TLS is working
+# _tls_required       #true if neither ACP nor QUADS is secure
+# crypto              #true if QUADS is secure
+# _secure             #true if either ACP or TLS or QUADS is secure
 # _rapid_supported    #true if rapid mode allowed
 # _mcq                #FIFO for incoming multicasts
 # _drq                #FIFO for pending discovery responses
@@ -841,12 +844,13 @@ def decrypt_msg(crypt):
 def skip_dialogue(testing=False, selfing=False, diagnosing=False, quadsing=True):
     """
 ####################################################################
-# skip_dialogue(testing=False, selfing=False, diagnosing=False)
+# skip_dialogue(testing=False, selfing=False, diagnosing=False, quadsing=True)
 #                                  
 # Tells GRASP to skip initial dialogue
 #
 # Default is not test mode and not listening to own multicasts
 # and not printing message syntax diagnostics
+# and try QUADS security
 # Must be called before register_asa()
 #
 # No return value                                  
@@ -4001,15 +4005,24 @@ class _watcher(threading.Thread):
         threading.Thread.__init__(self, daemon=True)
 
     def run(self):
+        global _secure
         global _tls_required
         global _my_address
         global _mc_restart
         global _said_no_route
+        global crypto
         time.sleep(1)
         tprint("ACP watcher is up; thread count:",threading.active_count())
         i=0
         while True:
-            _tls_required = not(acp.status())
+            astat = acp.status()
+            ttprint("ACP status:", astat)
+            _secure = astat or crypto
+            _tls_required = not _secure
+            if _tls_required:
+                #should be code to cause TLS wrapping of TCP...
+                tprint("WARNING: ACP insecure, need TLS, not implemented")
+            
             time.sleep(10)
                        
             if test_mode and i<40:
@@ -4118,6 +4131,7 @@ def _initialise_grasp():
     global _flood_lock
     global _print_lock
     global _tls_required
+    global crypto
     global _secure
     global _rapid_supported
     global _mcq
@@ -4138,7 +4152,7 @@ def _initialise_grasp():
     global test_divert
     global _make_invalid
     global _make_badmess
-    global _dobubbles
+    global _dobubbles    
 
     ####################################
     ####################################
@@ -4266,15 +4280,16 @@ def _initialise_grasp():
 
 
     ####################################
-    # Is there an ACP?                 #
+    # Is there a secure ACP or QUADS?                 #
     ####################################
 
-    _secure = acp.status()
-    tprint("ACP status:", _secure)
+    astat = acp.status()
+    tprint("ACP status:", astat)
+    _secure = astat or crypto
     _tls_required = not _secure
     if _tls_required:
         #should be code to cause TLS wrapping of TCP...
-        tprint("WARNING: Need TLS, not implemented")
+        tprint("WARNING: ACP insecure, need TLS, not implemented")
 
     ####################################
     # What's my address?               #

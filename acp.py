@@ -85,6 +85,8 @@
 # 20190925 remove test for 'lo' in Posix branch
 #
 # 20191203 correct test for ULA
+#
+# 20200913 comment in status call how to indicate no security
 
 import os
 import socket
@@ -109,8 +111,9 @@ def new2019():
     return True
 
 def status():
-    """ACP status() """
-    return "WARNING: Simple Layer 2 ACP with no security."
+    """ACP status(), returns False if insecure """
+    #return False #uncomment this line to tell the truth (ACP is insecure)
+    return "WARNING: Simple Layer 2 ACP with no security." #tests as True
 
 def _find_windows_loopbacks():
     """Internal use only"""
