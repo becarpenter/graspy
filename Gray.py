@@ -152,6 +152,13 @@ while True:
     if failct > 3:
         failct = 0
         grasp.tprint("Flushing EX3 discovery")
+##        err, result = grasp.synchronize(asa_nonce, obj1, None, 5000)
+##        if not err:
+##            grasp.tprint("Synchronized EX1", result.value)
+##        else:
+##            grasp.tprint("Synch failed EX1", grasp.etext[err])
+##        if grasp.test_mode:
+##            dump_some()
         _, ll = grasp.discover(asa_nonce, obj3, 1000, flush = True)
     else:
         _, ll = grasp.discover(asa_nonce, obj3, 1000)

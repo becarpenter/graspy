@@ -5,6 +5,10 @@ This repository is for a Python 3 demonstration implementation of GRASP, the Gen
 
 This code IS NOT INTENDED FOR PRODUCTION USE. See the license and disclaimer in the grasp.py source file.
 
+Status on 2020-09-21
+
+Added support for the insecure Link-Local mode (DULL)
+
 Status on 2019-11-14:
 
 Added gsend() and grecv(), a messaging channel over a GRASP session
@@ -66,3 +70,17 @@ If you have the luxury of testing with several machines on a network, type n.
 This has been tested between Windows and Linux on a simple network including
 a physical layer loop, and on non-looped topologies with various mixtures of
 Linux, Windows 7 and MacOS.
+
+When it asks
+
+  Insecure link-local mode (DULL)? Y/N:
+
+type n unless you know what you are doing (see graspy.pdf for more).
+
+When it asks
+
+   Please enter the keying password for the domain.
+
+type in a locally chosen domain password, or a null password to run
+insecurely (see graspy.pdf for more).
+

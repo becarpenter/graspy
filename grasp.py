@@ -36,7 +36,7 @@
 # Released under the BSD 2-Clause "Simplified" or "FreeBSD"
 # License as follows:
 #                                                     
-# Copyright (C) 2015-2019 Brian E. Carpenter.                  
+# Copyright (C) 2015-2020 Brian E. Carpenter.                  
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with
@@ -71,7 +71,7 @@
 ########################################################
 ########################################################"""
 
-_version = "15-BC-20200913"
+_version = "15-BC-20200921"
 
 ##########################################################
 # The following change log records significant changes,
@@ -174,6 +174,8 @@ _version = "15-BC-20200913"
 # 20200408 fixed historic bug in flood()
 
 # 20200913 improved interaction between acp.status() and security checks
+
+# 20200920 added DULL flag and behaviour
 
 
 ##########################################################
@@ -841,29 +843,32 @@ def decrypt_msg(crypt):
 #                                  
 ####################################
 
-def skip_dialogue(testing=False, selfing=False, diagnosing=False, quadsing=True):
+def skip_dialogue(testing=False, selfing=False, diagnosing=False,
+                  quadsing=True, be_dull=False):
     """
 ####################################################################
-# skip_dialogue(testing=False, selfing=False, diagnosing=False, quadsing=True)
+# skip_dialogue(testing=False, selfing=False, diagnosing=False,
+#               quadsing=True, be_dull=False)
 #                                  
 # Tells GRASP to skip initial dialogue
 #
 # Default is not test mode and not listening to own multicasts
 # and not printing message syntax diagnostics
-# and try QUADS security
+# and try QUADS security (unless DULL)
+# and not DULL
 # Must be called before register_asa()
 #
 # No return value                                  
 ####################################################################
 """
-    global _skip_dialogue, test_mode, listen_self, mess_check, _grasp_initialised
+    global _skip_dialogue, test_mode, listen_self, mess_check, _grasp_initialised, DULL
     if _grasp_initialised:
         return
     _skip_dialogue = True
     test_mode = testing
     listen_self = selfing
     mess_check = diagnosing
-    if quadsing:
+    if quadsing and not DULL:
         try:
             import quadsk
             _ini_crypt(_key=quadsk.key,_iv=quadsk.iv)
@@ -986,6 +991,7 @@ def register_obj(asa_nonce, obj, ttl=None, discoverable=False, \
 # (NOT supported in this implementation.)
 #
 # if local==True, discovery must return a link-local address
+# (also applies in DULL mode)
 #
 # if rapid==True, supplied value should be used in rapid mode
 # (only works for synchronization)
@@ -1041,7 +1047,7 @@ def register_obj(asa_nonce, obj, ttl=None, discoverable=False, \
         new_obj = _registered_objective(obj, asa_nonce)
         new_obj.port = listen_port
         new_obj.discoverable = discoverable # whether it can be discovered immediately
-        new_obj.local = local # whether it must be assigned a link-local address
+        new_obj.local = local or DULL # whether it must be assigned a link-local address
         new_obj.rapid = rapid # whether it should support rapid mode
         new_obj.locators = locators
         if tname(ttl) == "int" and ttl>0:
@@ -1141,10 +1147,15 @@ def discover(asa_nonce, obj, timeout, flush=False, relay_ifi=False, relay_snonce
 """
     global _i_sent_it
     if not relay_ifi:
+        if not _secure and not DULL:
+            return errors.noSecurity, [] #allowed in DULL mode
         errorcode = _check_asa_obj(asa_nonce, obj, False)
         if errorcode:
             #raise RuntimeError("grasp.discover:"+etext[errorcode])
             return errorcode, []
+
+    if DULL:
+        obj.loop_count = 1
 
     _disc_lock.acquire()
     # Can't use a comprehension because we need the actual
@@ -2049,6 +2060,8 @@ def synchronize(asa_nonce, obj, loc, timeout):
         return errors.noASA, None
     if not obj.synch:
         return errors.notSynch, None
+    if not _secure and not DULL:
+        return errors.noSecurity, None #receiving a flood is allowed in DULL
 
     #Has the objective been flooded?
 
@@ -2063,8 +2076,13 @@ def synchronize(asa_nonce, obj, loc, timeout):
                 #(Note that expired floods are garbage collected when
                 #new flood multicasts are received, not here.)
         _flood_lock.release()
-        #not flooded, we need to ask...
 
+    #not flooded
+    if not _secure:
+        return errors.noSecurity, None
+    
+    #we need to ask the network
+    
     if not timeout:
         timeout = GRASP_DEF_TIMEOUT
 
@@ -2326,20 +2344,23 @@ def flood(asa_nonce, ttl, *tagged_obj):
 # return errorcode if failure
 ##############################################################
 """
+
+    if not _secure and not DULL:
+        return errors.noSecurity #allowed in DULL mode
    
     for x in tagged_obj:
         errorcode = _check_asa_obj(asa_nonce, x.objective, True)
         if errorcode:
-            return errorcode   
+            return errorcode
 
-    if tagged_obj[0].source and (tagged_obj[0].source.locator == unspec_address):
+    if DULL or (tagged_obj[0].source and (tagged_obj[0].source.locator == unspec_address)):
         tagged_obj[0].objective.loop_count = 1 # force link-local loop count
         _local_flood = True
     else:
         _local_flood = False
 
     _floodl = []
-        
+            
     for x in tagged_obj:
         if x.source == None:
             _l = [] # empty option
@@ -3450,7 +3471,7 @@ class _mclisten(threading.Thread):
                     msg = _parse_msg(payload)
                     if not msg:
                         #invalid message, cannot process it
-                        ttprint(payload)
+                        ttprint(payload,saddr,sport,ifn)
                         ttprint("Multicast: Invalid message format")
                         continue
                     ttprint("Multicast: CBOR->Python:", payload)
@@ -3690,7 +3711,17 @@ class _mchandler(threading.Thread):
                     # hack to ignore self-sent discoveries if multiple instances and
                     # running with listen_self == True
                     ttprint("Dropping own discovery multicast")
-                    
+
+                elif DULL and not from_addr.is_link_local:
+                    ttprint("DULL dropping non-local packet")
+
+                elif DULL and msg.mtype == M_DISCOVERY and msg.obj.loop_count != 1:
+                    ttprint("DULL dropping discovery with bad loop count")
+
+                elif DULL and msg.mtype == M_FLOOD and \
+                     msg.flood_list[0].obj.loop_count != 1:
+                    ttprint("DULL dropping flood with bad loop count")
+                                        
                 elif msg.mtype == M_DISCOVERY:
                     ttprint("Got multicast Discovery msg")
                 
@@ -3764,7 +3795,7 @@ class _mchandler(threading.Thread):
                             #we don't need this socket again
                             sock.close()
                             
-                        else:
+                        elif not DULL:
                                                 
                             # Not local - do we have it in the cache?
                             # We will come here too if test_divert is set
@@ -3833,6 +3864,9 @@ class _mchandler(threading.Thread):
                             else:
                                 #ttprint("Not in discovery cache")
                                 pass
+                        else:
+                            tprint("DULL discovery failure")
+                            pass
                     except OSError:
                         #invalid discovery format - do nothing
                         tprint("Discovery message has invalid content")
@@ -4015,13 +4049,7 @@ class _watcher(threading.Thread):
         tprint("ACP watcher is up; thread count:",threading.active_count())
         i=0
         while True:
-            astat = acp.status()
-            ttprint("ACP status:", astat)
-            _secure = astat or crypto
-            _tls_required = not _secure
-            if _tls_required:
-                #should be code to cause TLS wrapping of TCP...
-                tprint("WARNING: ACP insecure, need TLS, not implemented")
+            _security_check()
             
             time.sleep(10)
                        
@@ -4102,6 +4130,26 @@ def dump_all():
         print("Nonce:",'{:8}'.format(x.id_value),"Source:",x.id_source,"Active:",x.id_active,
               "Relayed:",x.id_relayed)
 
+def _security_check():
+    """Internal use only """
+    global _secure, crypto, _tls_required, DULL
+    
+    ####################################
+    # Is there a secure ACP or QUADS?                 #
+    ####################################
+
+    astat = acp.status()
+    ttprint("ACP status:", astat)
+    if DULL:
+        _secure = False  #Make sure of it!
+        ttprint("WARNING: Insecure Discovery Unsolicited Link-Local (DULL) mode")
+    else:
+        _secure = astat or crypto
+        _tls_required = not _secure
+        if _tls_required:
+            #should be code to cause TLS wrapping of TCP...
+            tprint("WARNING: ACP insecure, need TLS, not implemented")
+    return
 
 def _initialise_grasp():
     """Internal use only """
@@ -4133,6 +4181,7 @@ def _initialise_grasp():
     global _tls_required
     global crypto
     global _secure
+    global DULL
     global _rapid_supported
     global _mcq
     global _drq
@@ -4214,18 +4263,34 @@ def _initialise_grasp():
             if _l:
                 if _l[0] == "Y" or _l[0] == "y":
                     listen_self = True
-                    ttprint("WARNING: Will listen to own LL multicasts")
+                    #ttprint("WARNING: Will listen to own LL multicasts")
         except:
             pass
 
         ####################################
-        # Initialise QUADS                 #
+        # DULL mode?                       # 
         ####################################
+
+        DULL = False
+
         try:
-            import quadsk
-            _ini_crypt(_key=quadsk.key,_iv=quadsk.iv)
+            _l = input("Insecure link-local mode (DULL)? Y/N:")
+            if _l:
+                if _l[0] == "Y" or _l[0] == "y":
+                    DULL = True
+                    #ttprint("WARNING: Insecure Discovery Unsolicited Link-Local (DULL) mode")
         except:
-            _ini_crypt() #No cryptography keys installed
+            pass
+
+        ####################################
+        # Initialise QUADS (unless DULL)   #
+        ####################################
+        if not DULL:
+            try:
+                import quadsk
+                _ini_crypt(_key=quadsk.key,_iv=quadsk.iv)
+            except:
+                _ini_crypt() #No cryptography keys installed
         
     ####################################
     # Initialise global variables      #
@@ -4275,21 +4340,23 @@ def _initialise_grasp():
     test_divert = False        # Flip this only inside test ASA, with care
     _make_invalid = False      # For testing M_INVALID, with care
     _make_badmess = False      # For testing bad message format, with care
+
+    ####################################
+    # Security check                   #
+    ####################################
+
+    _security_check()
+
+    if DULL:
+        tprint("Security status: DULL mode")
+    elif crypto:
+        tprint("Security status: QUADS active")
+    elif _secure:
+        trpint("Security status: ACP secure")
+    else:
+        tprint("Security status: GRASP is insecure")
                            
     tprint("Initialised global variables, registries and caches.")
-
-
-    ####################################
-    # Is there a secure ACP or QUADS?                 #
-    ####################################
-
-    astat = acp.status()
-    tprint("ACP status:", astat)
-    _secure = astat or crypto
-    _tls_required = not _secure
-    if _tls_required:
-        #should be code to cause TLS wrapping of TCP...
-        tprint("WARNING: ACP insecure, need TLS, not implemented")
 
     ####################################
     # What's my address?               #
@@ -4343,7 +4410,7 @@ def _initialise_grasp():
     ####################################
 
     _relay_needed = False
-    if len(_ll_zone_ids) > 1:
+    if len(_ll_zone_ids) > 1 and not DULL:
         # start thread to relay incoming Discovery and
         # Synchronisation multicasts
         _relay_needed = True
@@ -4390,6 +4457,7 @@ def _initialise_grasp():
 _print_lock = threading.Lock() # printing might be needed before init!
 test_mode = False              # referenced by skip_dialogue(), used by printing
 listen_self = False            # referenced by skip_dialogue()
+DULL = False                   # referenced by skip_dialogue()
 _skip_dialogue = False         # referenced by skip_dialogue()
 _dobubbles = False             # Don't bubble print by default
 bubbleQ = queue.Queue(100)     # Will be used if bubble printing
