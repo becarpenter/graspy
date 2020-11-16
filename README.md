@@ -5,17 +5,20 @@ This repository is for a Python 3 demonstration implementation of GRASP, the Gen
 
 This code IS NOT INTENDED FOR PRODUCTION USE. See the license and disclaimer in the grasp.py source file.
 
+Overview: see GRASP-intro.pdf
+Doc: see graspy.pdf
+
 Status on 2020-09-21
 
 Added support for the insecure Link-Local mode (DULL)
 
 Status on 2019-11-14:
 
-Added gsend() and grecv(), a messaging channel over a GRASP session
+Added gsend() and grecv(), a messaging channel over a GRASP session (not part of the IETF standard)
 
 Status on 2019-10-30:
 
-Added QUADS security and QUADSKI key infrastructure.
+Added QUADS security and QUADSKI key infrastructure (not part of the IETF standard)
 
 Status on 2019-01-26:
 
@@ -39,7 +42,7 @@ The documentation for grasp.py and acp.py
 is in the file graspy.pdf
 
 There's a short overview presentation in
-the file AN-overview.pdf
+the file GRASP-intro.pdf
 
 The code was tested only on Windows 7 and 10, Linux and MacOS so far. In theory,
 the code will work on any host with Winsock2 or Posix compliant TCP/IPv6.
