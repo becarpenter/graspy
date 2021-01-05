@@ -20,7 +20,7 @@ time.sleep(8) # so the user can read the text
 ####################################
 
 name = "TestClient"
-err,asa_nonce = grasp.register_asa(name)
+err,asa_handle = grasp.register_asa(name)
 if err:
     exit()
 grasp.tprint("ASA", name, "registered OK")    
@@ -28,7 +28,7 @@ grasp.tprint("ASA", name, "registered OK")
 obj3 = grasp.objective("EX3")
 obj3.neg = True
 
-err = grasp.register_obj(asa_nonce,obj3)
+err = grasp.register_obj(asa_handle,obj3)
 if not err:
     grasp.tprint("Objective EX3 registered OK")
 else:
@@ -47,9 +47,9 @@ while True:
     if failct > 3:
         failct = 0
         grasp.tprint("Flushing EX3 discovery")
-        _, ll = grasp.discover(asa_nonce, obj3, 1000, flush = True)
+        _, ll = grasp.discover(asa_handle, obj3, 1000, flush = True)
     else:
-        _, ll = grasp.discover(asa_nonce, obj3, 1000)
+        _, ll = grasp.discover(asa_handle, obj3, 1000)
     if ll==[]:
         grasp.tprint("Discovery failed")
         failct += 1
@@ -58,16 +58,16 @@ while True:
     #attempt to negotiate
 
     grasp.tprint("Session starting")   
-    err, snonce, answer = grasp.req_negotiate(asa_nonce, obj3, ll[0], None, noloop=True)
+    err, shandle, answer = grasp.req_negotiate(asa_handle, obj3, ll[0], None, noloop=True)
 
     if err == grasp.errors.noReply:
         #session is available
         err = False
         while not err:
             tweet = input("Your message:")
-            err = grasp.gsend(asa_nonce, snonce, tweet)
+            err = grasp.gsend(asa_handle, shandle, tweet)
             if not err:
-                err, reply = grasp.grecv(asa_nonce, snonce, 60000)
+                err, reply = grasp.grecv(asa_handle, shandle, 60000)
                 if not err:
                     grasp.tprint("Peer replied:", reply)
         grasp.tprint("Send/recv error:",grasp.etext[err])
@@ -83,9 +83,9 @@ while True:
         failct += 1
         grasp.tprint("Fail count", failct)
         time.sleep(5) #to calm things if there's a looping error
-    elif (not err) and snonce:
+    elif (not err) and shandle:
         grasp.tprint("Unexpected response")
-        grasp.ttprint("requested, session_nonce:",snonce,"answer",answer)
+        grasp.ttprint("requested, session_handle:",shandle,"answer",answer)
         grasp.tprint("Peer said",answer.value)
         
         

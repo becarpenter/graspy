@@ -36,7 +36,7 @@
 # Released under the BSD 2-Clause "Simplified" or "FreeBSD"
 # License as follows:
 #                                                     
-# Copyright (C) 2015-2020 Brian E. Carpenter.                  
+# Copyright (C) 2015-2021 Brian E. Carpenter.                  
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with
@@ -71,7 +71,7 @@
 ########################################################
 ########################################################"""
 
-_version = "15-BC-20200921"
+_version = "15-BC-20210105"
 
 ##########################################################
 # The following change log records significant changes,
@@ -176,6 +176,8 @@ _version = "15-BC-20200921"
 # 20200913 improved interaction between acp.status() and security checks
 
 # 20200920 added DULL flag and behaviour
+
+# 20210105 renamed nonces as handles
 
 
 ##########################################################
@@ -314,7 +316,7 @@ A GRASP objective:
         self.dry = False  #Set True if objective also supports dry-run negotiation
         self.synch = False  #Set True if objective supports synch
         self.loop_count = GRASP_DEF_LOOPCT #Default starting value
-        self.value = 0    #Place holder; format undefined
+        self.value = None #Place holder; format undefined
 
 def _oclone(obj):
     """Internal use only"""
@@ -334,9 +336,9 @@ def _oclone(obj):
 
 class _registered_objective:
     """Internal use only"""
-    def __init__(self, objective, asa_nonce):
+    def __init__(self, objective, asa_handle):
         self.objective = objective
-        self.asa_id    = asa_nonce
+        self.asa_id    = asa_handle
         self.protocol = socket.IPPROTO_TCP #default
         self.locators = [] #list of explicit locators, if any
         self.port = 0
@@ -414,7 +416,7 @@ class _session_instance:
         self.id_sock = None        #Socket if negotiating
         self.id_relayed = False    #True if has been relayed
 
-class _session_nonce:
+class _session_handle:
     """Internal use only"""
     def __init__(self, id_value, id_source):
         self.id_value = id_value   #Integer 
@@ -887,10 +889,10 @@ def register_asa(asa_name):
 # Tells the GRASP engine that a new ASA is starting up.
 # Also triggers GRASP initialisation if needed.
 # 
-# return zero, asa_nonce  if successful
+# return zero, asa_handle  if successful
 # return errorcode, None if failure
 #
-# Note - the ASA must store the asa_nonce (an opaque Python object)
+# Note - the ASA must store the asa_handle (an opaque Python object)
 # and use it in every subsequent GRASP call.
 ####################################################################
 """
@@ -909,18 +911,18 @@ def register_asa(asa_name):
         return errors.dupASA, None
     else:
         #append new one
-        asa_nonce = _new_session(None)
-        new_asa = _asa_instance(asa_nonce, asa_name)
+        asa_handle = _new_session(None)
+        new_asa = _asa_instance(asa_handle, asa_name)
         _asa_registry.append(new_asa)
         _asa_lock.release()
-        return errors.ok, asa_nonce
+        return errors.ok, asa_handle
 
 
 
-def deregister_asa(asa_nonce, asa_name):
+def deregister_asa(asa_handle, asa_name):
     """
 ####################################################################
-# deregister_asa(asa_nonce, asa_name)
+# deregister_asa(asa_handle, asa_name)
 #
 # Tells the GRASP engine that an ASA is going away.
 # Deregisters its objectives too.
@@ -937,7 +939,7 @@ def deregister_asa(asa_nonce, asa_name):
     i = _retrieve_asa(asa_name)
     if i == -1:
         return errors.noASA
-    elif (_asa_registry[i].nonce != asa_nonce):
+    elif (_asa_registry[i].nonce != asa_handle):
         _asa_lock.release()
         return errors.notYourASA
     else:
@@ -953,7 +955,7 @@ def deregister_asa(asa_nonce, asa_name):
         j=0
         while j < len(_obj_registry):
             x = _obj_registry[j]
-            if x.asa_id == asa_nonce:
+            if x.asa_id == asa_handle:
                 #found a match - delete it, which shortens the list
                 del _obj_registry[j]
             else:
@@ -962,17 +964,17 @@ def deregister_asa(asa_nonce, asa_name):
         
         del _asa_registry[i]
         #mark the nonce as inactive
-        _update_session(_session_instance(asa_nonce,False,None))
+        _update_session(_session_instance(asa_handle,False,None))
         _asa_lock.release()
         return errors.ok
 
 
 
-def register_obj(asa_nonce, obj, ttl=None, discoverable=False, \
+def register_obj(asa_handle, obj, ttl=None, discoverable=False, \
                  overlap=False, local=False, rapid=False, locators=[]):
     """
 ####################################################################
-# register_obj(asa_nonce, objective,ttl=None, discoverable=False,
+# register_obj(asa_handle, objective,ttl=None, discoverable=False,
 #              overlap=False, local=False, locators=[])
 #
 # Store an objective that this ASA supports and may modify.
@@ -1008,7 +1010,7 @@ def register_obj(asa_nonce, obj, ttl=None, discoverable=False, \
 ####################################################################
 """
     
-    if _no_nonce(asa_nonce):
+    if _no_handle(asa_handle):
         return errors.noASA
     if (obj.neg and obj.synch) or (obj.dry and obj.synch):
         return errors.notBoth
@@ -1044,7 +1046,7 @@ def register_obj(asa_nonce, obj, ttl=None, discoverable=False, \
         else:
             listen_port = 0
         #append new one
-        new_obj = _registered_objective(obj, asa_nonce)
+        new_obj = _registered_objective(obj, asa_handle)
         new_obj.port = listen_port
         new_obj.discoverable = discoverable # whether it can be discovered immediately
         new_obj.local = local or DULL # whether it must be assigned a link-local address
@@ -1058,10 +1060,10 @@ def register_obj(asa_nonce, obj, ttl=None, discoverable=False, \
     
 
 
-def deregister_obj(asa_nonce, obj):
+def deregister_obj(asa_handle, obj):
     """
 ####################################################################
-# deregister_obj(asa_nonce, objective)
+# deregister_obj(asa_handle, objective)
 #
 # Stops all operations on this objective (if registered)
 # by removing it from the registry.
@@ -1071,7 +1073,7 @@ def deregister_obj(asa_nonce, obj):
 ####################################################################
 """
 
-    if _no_nonce(asa_nonce):
+    if _no_handle(asa_handle):
         return errors.noASA
     _obj_lock.acquire()
     # Can't use a comprehension because we need the actual
@@ -1080,7 +1082,7 @@ def deregister_obj(asa_nonce, obj):
         x =_obj_registry[i]
         if x.objective.name == obj.name:
             #found it
-            if x.asa_id != asa_nonce:
+            if x.asa_id != asa_handle:
                 _obj_lock.release()
                 return errors.notYourObj
             #now delete it
@@ -1124,10 +1126,10 @@ def _recvraw(sock):
 
 
 
-def discover(asa_nonce, obj, timeout, flush=False, relay_ifi=False, relay_snonce=None):
+def discover(asa_handle, obj, timeout, flush=False, relay_ifi=False, relay_snonce=None):
     """
 ############################################################## 
-# discover(asa_nonce, objective, timeout)
+# discover(asa_handle, objective, timeout)
 #
 # Call in separate thread if asynchronous operation required.
 # timeout in milliseconds (None for default)
@@ -1149,7 +1151,7 @@ def discover(asa_nonce, obj, timeout, flush=False, relay_ifi=False, relay_snonce
     if not relay_ifi:
         if not _secure and not DULL:
             return errors.noSecurity, [] #allowed in DULL mode
-        errorcode = _check_asa_obj(asa_nonce, obj, False)
+        errorcode = _check_asa_obj(asa_handle, obj, False)
         if errorcode:
             #raise RuntimeError("grasp.discover:"+etext[errorcode])
             return errorcode, []
@@ -1191,7 +1193,7 @@ def discover(asa_nonce, obj, timeout, flush=False, relay_ifi=False, relay_snonce
 
     if not relay_ifi:
         disc_sess = _new_session(_session_locator)
-        snonce=_session_nonce(disc_sess,_session_locator.packed)
+        snonce=_session_handle(disc_sess,_session_locator.packed)
         #hack to detect own replies when running two instances
         _i_sent_it = disc_sess
         _to = _discTimeoutUnit*obj.loop_count
@@ -1356,14 +1358,14 @@ def _drloop(ifi,ttl,options,rec_obj,obj,inDivert):
 
 
 
-def req_negotiate(asa_nonce, obj, peer, timeout, noloop=False):
+def req_negotiate(asa_handle, obj, peer, timeout, noloop=False):
     """
 ##############################################################
-# req_negotiate(asa_nonce, objective, peer, timeout)
+# req_negotiate(asa_handle, objective, peer, timeout)
 #
 # Request negotiation session with a peer ASA.
 #
-# asa_nonce identifies the calling ASA
+# asa_handle identifies the calling ASA
 #
 # objective must include the requested value
 #
@@ -1379,14 +1381,14 @@ def req_negotiate(asa_nonce, obj, peer, timeout, noloop=False):
 #
 # Launch in a new thread if asynchronous operation required.
 #
-# return zero, session_nonce, objective
+# return zero, session_handle, objective
 #
 # The returned objective contains the first value proffered by the
 # negotiation peer. Note that this instance of the objective
 # MUST be used in the subsequent negotiation calls because
 # it contains the loop count.
 #
-# The ASA MUST store the session_nonce (an opaque Python object)
+# The ASA MUST store the session_handle (an opaque Python object)
 # and use it in the subsequent negotiation calls
 #
 # return zero, None, objective - returns accepted value
@@ -1399,7 +1401,7 @@ def req_negotiate(asa_nonce, obj, peer, timeout, noloop=False):
 
     # check that objective is registered and is owned by
     # the calling ASA
-    errorcode = _check_asa_obj(asa_nonce, obj, False)
+    errorcode = _check_asa_obj(asa_handle, obj, False)
     if errorcode:
         return errorcode, None, None
     if not (obj.neg or obj.dry):
@@ -1410,7 +1412,7 @@ def req_negotiate(asa_nonce, obj, peer, timeout, noloop=False):
 
     if peer == None:
         #Caller did not supply locator, we can try discovery
-        _, ll = discover(asa_nonce, obj, timeout)
+        _, ll = discover(asa_handle, obj, timeout)
         if len(ll)==0:
             return errors.noDiscReply, None, None
         else:
@@ -1427,7 +1429,7 @@ def req_negotiate(asa_nonce, obj, peer, timeout, noloop=False):
     #create TCP socket, assemble message and send it
     #(lazy code, not checking that TCP is the right one to use)
     neg_sess = _new_session(None)
-    snonce = _session_nonce(neg_sess,None)
+    snonce = _session_handle(neg_sess,None)
     sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
     if peer.locator.is_link_local:
         _ifi = peer.ifi
@@ -1464,10 +1466,10 @@ def req_negotiate(asa_nonce, obj, peer, timeout, noloop=False):
 
 
 
-def negotiate_step(asa_nonce, snonce, obj, timeout):
+def negotiate_step(asa_handle, snonce, obj, timeout):
     """
 ##############################################################
-# negotiate_step(asa_nonce, session_nonce, objective, timeout)
+# negotiate_step(asa_handle, session_handle, objective, timeout)
 #
 # Continue negotiation session
 #
@@ -1486,7 +1488,7 @@ def negotiate_step(asa_nonce, snonce, obj, timeout):
     
     # check that objective is registered and is owned by
     # the calling ASA
-    errorcode = _check_asa_obj(asa_nonce, obj, False)
+    errorcode = _check_asa_obj(asa_handle, obj, False)
     if errorcode:
         return errorcode, None, None
     if not obj.neg:
@@ -1643,10 +1645,10 @@ def _negloop(snonce, obj, timeout, sock, new_request):
 
 
 
-def negotiate_wait(asa_nonce, snonce, timeout):
+def negotiate_wait(asa_handle, snonce, timeout):
     """
 ##############################################################
-# negotiate_wait(asa_nonce, session_nonce, timeout)
+# negotiate_wait(asa_handle, session_handle, timeout)
 #
 # Delay negotiation session
 #
@@ -1658,7 +1660,7 @@ def negotiate_wait(asa_nonce, snonce, timeout):
 """
 
     # check that the calling ASA is registered
-    if _no_nonce(asa_nonce):
+    if _no_handle(asa_handle):
         return errors.noASA 
     # check that GRASP is running securely
     if not _secure:
@@ -1687,10 +1689,10 @@ def negotiate_wait(asa_nonce, snonce, timeout):
 
 
 
-def end_negotiate(asa_nonce, snonce, result, reason=None):
+def end_negotiate(asa_handle, snonce, result, reason=None):
     """
 ##############################################################
-# end_negotiate(asa_nonce, session_nonce, result, reason="why")
+# end_negotiate(asa_handle, session_handle, result, reason="why")
 #
 # End negotiation session
 #
@@ -1706,7 +1708,7 @@ def end_negotiate(asa_nonce, snonce, result, reason=None):
 ##############################################################
 """
     # check that the calling ASA is registered
-    if _no_nonce(asa_nonce):
+    if _no_handle(asa_handle):
         return errors.noASA 
     # check that GRASP is running securely
     if not _secure:
@@ -1740,10 +1742,10 @@ def end_negotiate(asa_nonce, snonce, result, reason=None):
     return errors.ok
 
 
-def send_invalid(asa_nonce, snonce, info="No information"):
+def send_invalid(asa_handle, snonce, info="No information"):
     """
 ##############################################################
-# send_invalid(asa_nonce, snonce, info="Diagnostic data")
+# send_invalid(asa_handle, snonce, info="Diagnostic data")
 #
 # Send invalid message
 #
@@ -1757,7 +1759,7 @@ def send_invalid(asa_nonce, snonce, info="No information"):
 ##############################################################
 """
     # check that the calling ASA is registered
-    if _no_nonce(asa_nonce):
+    if _no_handle(asa_handle):
         return errors.noASA 
     # check that GRASP is running securely
     if not _secure:
@@ -1786,10 +1788,10 @@ def send_invalid(asa_nonce, snonce, info="No information"):
 
  
 
-def listen_negotiate(asa_nonce, obj):
+def listen_negotiate(asa_handle, obj):
     """
 ##############################################################
-# listen_negotiate(asa_nonce, objective)
+# listen_negotiate(asa_handle, objective)
 #
 # Instructs GRASP to listen for negotiation
 # requests for the given objective.
@@ -1804,14 +1806,14 @@ def listen_negotiate(asa_nonce, obj):
 # and/or end_negotiate
 # listen_negotiate must then be repeated to restart listening.
 #
-# return zero, session_nonce, requested_objective
+# return zero, session_handle, requested_objective
 #
 # The requested_objective contains the first value requested by the
 # negotiation peer. Note that this instance of the objective
 # MUST be used in the subsequent negotiation calls because
 # it contains the loop count.
 #
-# The ASA MUST store the session_nonce (an opaque Python object)
+# The ASA MUST store the session_handle (an opaque Python object)
 # and use it in the subsequent negotiation calls.
 #
 # return errorcode, None, None     
@@ -1820,7 +1822,7 @@ def listen_negotiate(asa_nonce, obj):
 
     # check that objective is registered and is owned by
     # the calling ASA
-    errorcode = _check_asa_obj(asa_nonce, obj, False)
+    errorcode = _check_asa_obj(asa_handle, obj, False)
     if errorcode:
         return errorcode, None, None
     if not obj.neg:
@@ -1875,7 +1877,7 @@ def listen_negotiate(asa_nonce, obj):
     #build the session instance and nonce
     s_id = rq[2].id_value
     s_source = rq[1]
-    s_nonce = _session_nonce(s_id,s_source.packed)
+    s_handle = _session_handle(s_id,s_source.packed)
     #cache remote session along with socket
     news = _session_instance(s_id,True,s_source.packed)
     news.id_sock=rq[0]
@@ -1885,17 +1887,17 @@ def listen_negotiate(asa_nonce, obj):
         prof_obj = rq[2].obj
         if prof_obj.dry:
             ttprint("Received Dry Request")   
-        return errors.ok, s_nonce, _detag_obj(prof_obj)  # Negotiation starting
+        return errors.ok, s_handle, _detag_obj(prof_obj)  # Negotiation starting
     else:
         # race condition clash between s_id and an existing session
         # this should be incredibly rare unless both sides are
         # using very poor random number generators
         return errors.IDclash, None, None
 
-def stop_negotiate(asa_nonce, obj):
+def stop_negotiate(asa_handle, obj):
     """
 ##############################################################
-# stop_negotiate(asa_nonce, objective)
+# stop_negotiate(asa_handle, objective)
 #
 # Instructs GRASP to stop listening for negotiation
 # requests for the given objective.
@@ -1908,7 +1910,7 @@ def stop_negotiate(asa_nonce, obj):
     # check that objective is registered and is owned by
     # the calling ASA
     
-    errorcode = _check_asa_obj(asa_nonce, obj, False)
+    errorcode = _check_asa_obj(asa_handle, obj, False)
     if errorcode:
         return errorcode
 
@@ -1920,10 +1922,10 @@ def stop_negotiate(asa_nonce, obj):
     _obj_lock.release() 
     return errors.ok
 
-def gsend(asa_nonce, snonce, message):
+def gsend(asa_handle, snonce, message):
     """
 ##############################################################
-# gsend(asa_nonce, snonce, message)
+# gsend(asa_handle, snonce, message)
 #
 # Sends over the socket for an opened negotiation session
 #
@@ -1934,7 +1936,7 @@ def gsend(asa_nonce, snonce, message):
 ##############################################################
 """
     # check that the calling ASA is registered
-    if _no_nonce(asa_nonce):
+    if _no_handle(asa_handle):
         return errors.noASA
     # check that GRASP is running securely
     if not _secure:
@@ -1959,10 +1961,10 @@ def gsend(asa_nonce, snonce, message):
             _disactivate_session(snonce)
             return errors.sockErr
 
-def grecv(asa_nonce, snonce, timeout):
+def grecv(asa_handle, snonce, timeout):
     """
 ##############################################################
-# grecv(asa_nonce, snonce, timeout)
+# grecv(asa_handle, snonce, timeout)
 #
 # Receives over the socket for an opened negotiation session
 #
@@ -1972,7 +1974,7 @@ def grecv(asa_nonce, snonce, timeout):
 ##############################################################
 """
     # check that the calling ASA is registered
-    if _no_nonce(asa_nonce):
+    if _no_handle(asa_handle):
         return errors.noASA, None
     # check that GRASP is running securely
     if not _secure:
@@ -2021,10 +2023,10 @@ def grecv(asa_nonce, snonce, timeout):
 
 
 
-def synchronize(asa_nonce, obj, loc, timeout):
+def synchronize(asa_handle, obj, loc, timeout):
     """
 ##############################################################
-# synchronize(asa_nonce, objective, locator, timeout)
+# synchronize(asa_handle, objective, locator, timeout)
 #
 # Request synchronized value of the given objective.
 #
@@ -2056,7 +2058,7 @@ def synchronize(asa_nonce, obj, loc, timeout):
 ##############################################################
 """
 
-    if _no_nonce(asa_nonce):
+    if _no_handle(asa_handle):
         return errors.noASA, None
     if not obj.synch:
         return errors.notSynch, None
@@ -2088,7 +2090,7 @@ def synchronize(asa_nonce, obj, loc, timeout):
 
     if loc == None:
         #Caller did not supply locator, we can try discovery
-        _, ll = discover(asa_nonce, obj, timeout)
+        _, ll = discover(asa_handle, obj, timeout)
         if len(ll)==0:
             return errors.notFloodDisc, None
         else:
@@ -2109,7 +2111,7 @@ def synchronize(asa_nonce, obj, loc, timeout):
     #create TCP socket, assemble message and send it
     #(lazy code, not checking that TCP is the right one to use)
     sync_sess = _new_session(None)
-    snonce = _session_nonce(sync_sess, None)
+    snonce = _session_handle(sync_sess, None)
     sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
     if loc.locator.is_link_local:
         _ifi = loc.ifi
@@ -2166,10 +2168,10 @@ def synchronize(asa_nonce, obj, loc, timeout):
 
 
 
-def listen_synchronize(asa_nonce, obj):
+def listen_synchronize(asa_handle, obj):
     """
 ##############################################################
-# listen_synchronize(asa_nonce, objective)
+# listen_synchronize(asa_handle, objective)
 #
 # Instructs GRASP to listen for synchronization
 # requests for the given objective, and to
@@ -2186,7 +2188,7 @@ def listen_synchronize(asa_nonce, obj):
     obj = _oclone(obj)
     # check that objective is registered and is owned by
     # the calling ASA
-    errorcode = _check_asa_obj(asa_nonce, obj, True)
+    errorcode = _check_asa_obj(asa_handle, obj, True)
     if errorcode:
         return errorcode
     # check that GRASP is running securely
@@ -2289,10 +2291,10 @@ class _synch_listen(threading.Thread):
         ttprint("Exit synch_listen thread")
 
 
-def stop_synchronize(asa_nonce, obj):
+def stop_synchronize(asa_handle, obj):
     """
 ##############################################################
-# stop_synchronize(asa_nonce, objective)
+# stop_synchronize(asa_handle, objective)
 #
 # Instructs GRASP to stop listening for synchronization
 # requests for the given objective.
@@ -2304,7 +2306,7 @@ def stop_synchronize(asa_nonce, obj):
     # check that objective is registered and is owned by
     # the calling ASA
     
-    errorcode = _check_asa_obj(asa_nonce, obj, True)
+    errorcode = _check_asa_obj(asa_handle, obj, True)
     if errorcode:
         return errorcode
 
@@ -2318,10 +2320,10 @@ def stop_synchronize(asa_nonce, obj):
 
 
 
-def flood(asa_nonce, ttl, *tagged_obj):
+def flood(asa_handle, ttl, *tagged_obj):
     """
 ##############################################################
-# flood(asa_nonce, ttl, *tagged_obj)                               
+# flood(asa_handle, ttl, *tagged_obj)                               
 #
 # Instructs GRASP to flood the given synchronization
 # objective(s) and their value(s) to all GRASP nodes.
@@ -2349,7 +2351,7 @@ def flood(asa_nonce, ttl, *tagged_obj):
         return errors.noSecurity #allowed in DULL mode
    
     for x in tagged_obj:
-        errorcode = _check_asa_obj(asa_nonce, x.objective, True)
+        errorcode = _check_asa_obj(asa_handle, x.objective, True)
         if errorcode:
             return errorcode
 
@@ -2403,13 +2405,13 @@ def flood(asa_nonce, ttl, *tagged_obj):
             #might fail if CPU suspended etc
             ttprint("MC socket failure in flood()")
             _fixmcsock(i)
-    _disactivate_session(_session_nonce(flood_session, None))
+    _disactivate_session(_session_handle(flood_session, None))
     return errors.ok
 
-def get_flood(asa_nonce, obj):
+def get_flood(asa_handle, obj):
     """
 ##############################################################
-# get_flood(asa_nonce, objective)
+# get_flood(asa_handle, objective)
 #
 # Request flooded values of the given objective.
 #
@@ -2427,7 +2429,7 @@ def get_flood(asa_nonce, obj):
 ##############################################################
 """
 
-    if _no_nonce(asa_nonce):
+    if _no_handle(asa_handle):
         return errors.noASA, None
     if not obj.synch:
         return errors.notSynch, None
@@ -2447,10 +2449,10 @@ def get_flood(asa_nonce, obj):
 
     return errors.ok, _l
 
-def expire_flood(asa_nonce, tagged_obj):
+def expire_flood(asa_handle, tagged_obj):
     """
 ##############################################################
-# expire_flood(asa_nonce, tagged_obj)
+# expire_flood(asa_handle, tagged_obj)
 #
 # Mark a flooded objective as expired
 #
@@ -2466,7 +2468,7 @@ def expire_flood(asa_nonce, tagged_obj):
 ##############################################################
 """
 
-    if _no_nonce(asa_nonce):
+    if _no_handle(asa_handle):
         return errors.noASA
     
     #(Note that expired floods are garbage collected when
@@ -2750,7 +2752,7 @@ def _retrieve_asa(asa_name):
 
 
 
-def _no_nonce(asa_nonce):
+def _no_handle(asa_handle):
     """Internal use only"""
 ####################################
 # Check a nonce                    #
@@ -2758,11 +2760,11 @@ def _no_nonce(asa_nonce):
 # return True if nonce is absent   #
 ####################################
     # don't think we need the lock for this
-    return not([x for x in _asa_registry if x.nonce == asa_nonce])
+    return not([x for x in _asa_registry if x.nonce == asa_handle])
 
 
 
-def _check_asa_obj(asa_nonce, obj, sending_synch):
+def _check_asa_obj(asa_handle, obj, sending_synch):
     """Internal use only"""
 ####################################
 # Check a calling ASA              #
@@ -2777,10 +2779,10 @@ def _check_asa_obj(asa_nonce, obj, sending_synch):
         return errors.notBoth
     if sending_synch and not obj.synch:
         return errors.notSynch
-    if _no_nonce(asa_nonce):
+    if _no_handle(asa_handle):
         return errors.noASA
     _obj_lock.acquire()
-    if (obj.neg or sending_synch) and not([x for x in _obj_registry if x.objective.name == obj.name and x.asa_id == asa_nonce]):
+    if (obj.neg or sending_synch) and not([x for x in _obj_registry if x.objective.name == obj.name and x.asa_id == asa_handle]):
         _obj_lock.release()
         return errors.notYourObj
     _obj_lock.release()
@@ -2836,7 +2838,7 @@ def _insert_session(session_inst, _check_race = False):
         _sess_lock.release()
         if _check_race:
             return False # incredibly unlikely race condition, do nothing
-        clash = _get_session(_session_nonce(new_id,session_inst.id_source))
+        clash = _get_session(_session_handle(new_id,session_inst.id_source))
         #the following test is because in theory the session could have
         #just been deleted by another thread...
         if clash:
@@ -2874,7 +2876,7 @@ def _get_session(snonce):
 # Get a Session ID entry by ID and #
 # source locator                   # 
 #                                  #
-# _get_session(_session_nonce)     #
+# _get_session(_session_handle)     #
 # return False if not found active #
 # else return _session_instance    #
 ####################################   
@@ -2915,7 +2917,7 @@ def _disactivate_session(snonce):
 ####################################
 # Disactivate a Session ID entry   #
 #                                  #
-# parameter is _session_nonce      #
+# parameter is _session_handle      #
 #                                  #
 # ignores mismatch                 #
 # returns nothing                  #
@@ -3518,7 +3520,7 @@ def _relay(payload, msg, ifi):
 # the throttle.                                    #
 ####################################################
 
-    r_snonce = _session_nonce(msg.id_value, msg.id_source)
+    r_snonce = _session_handle(msg.id_value, msg.id_source)
     
     # drop message if this is a looping relay
     sess = _get_session(r_snonce)
@@ -3663,7 +3665,7 @@ class _drlisten(threading.Thread):
                         #find the correct session queue
                         sid = msg.id_value  # session ID
                         sini = msg.id_source # session initiator
-                        s=_get_session(_session_nonce(sid,sini))
+                        s=_get_session(_session_handle(sid,sini))
                         if s:
                             # (give up silently if no such session)
                             if s.id_dq:
