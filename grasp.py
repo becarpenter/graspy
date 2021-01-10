@@ -4354,7 +4354,7 @@ def _initialise_grasp():
     elif crypto:
         tprint("Security status: QUADS active")
     elif _secure:
-        trpint("Security status: ACP secure")
+        tprint("Security status: ACP secure")
     else:
         tprint("Security status: GRASP is insecure")
                            
