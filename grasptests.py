@@ -68,15 +68,15 @@ class testASA(threading.Thread):
         
         for i in range(3):
             #test discovery 3 times, including artificial Divert
-            grasp.tprint("Test ASA: grasp.test_divert",grasp.test_divert)
+            grasp.tprint("Test ASA: grasp._test_divert",grasp._test_divert)
             err, boot_ll = grasp.discover(boot_nonce, boot_obj, 5000)
             if len(boot_ll)>0:
                 grasp.tprint("Boot discovery result", boot_ll[0].locator)
-                grasp.test_divert = True
+                grasp._test_divert = True
             else:
                 grasp.tprint("No Boot discovery response")
             time.sleep(5)
-        grasp.test_divert = False
+        grasp._test_divert = False
 
 ####################################
 # Test code: send Flood messages

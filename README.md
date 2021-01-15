@@ -1,12 +1,16 @@
 # graspy
 Python 3 demo code for GRASP protocol
 
-This repository is for a Python 3 demonstration implementation of GRASP, the Generic Autonomic Signaling Protocol developed in the IETF ANIMA working group. It also contains some demonstration applications.
+This repository is for a Python 3 demonstration implementation of GRASP, the Generic Autonomic Signaling Protocol developed in the IETF ANIMA working group, and its API. It also contains some demonstration applications.
 
-This code IS NOT INTENDED FOR PRODUCTION USE. See the license and disclaimer in the grasp.py source file.
+This code IS NOT INTENDED FOR PRODUCTION USE. See the license and disclaimers in the graspi.py source file.
 
 Overview: see GRASP-intro.pdf
 Doc: see graspy.pdf
+
+Status on 2021-01-15
+
+Added missing API features and added graspi.py as a wrapper that conforms to the approved official API. Some of the demos (graspitests, Briggs, Gray) have been updated to use the official API. Others will be updated as time permits.
 
 Status on 2020-09-21
 

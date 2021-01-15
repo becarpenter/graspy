@@ -3,13 +3,16 @@
 #                                                     
 # Generic Autonomic Signaling Protocol (GRASP)        
 #                                                     
-# GRASP engine and API  - Experimental version                              
+# GRASP engine and experimantal API                             
 #                                                     
 # Module name is 'grasp'
 #                                                     
-# This is a prototype/demo implementation of GRASP in 
-# Python 3.6 or higher, based on draft-ietf-anima-grasp-15.txt
-# It is not guaranteed or validated in any way and is 
+# This is a prototype/demo implementation of GRASP. It was
+# developed using Python 3.7.
+# 
+# It is based on RFC-to-be draft-ietf-anima-grasp-15. The API
+# is not compatible with RFC-to-be draft-ietf-anima-grasp-api-09.
+# This code is not guaranteed or validated in any way and is 
 # both incomplete and probably wrong. It makes no claim
 # to be production-quality code. Its main purpose is to
 # help improve the protocol specification.            
@@ -19,17 +22,17 @@
 #                                                     
 # SECURITY WARNINGS:                                  
 #  - assumes ACP up on all interfaces (or none)       
-#  - doesn't even try wrapping TCP in TLS             
 #  - does not watch for interface up/down changes
-#  - you are strongly recommended to use the built-in QUADS security
+#  - no support for wrapping TCP in TLS
+#  - it is strongly recommended to use the built-in QUADS security
+#    unless a truly secure ACP is available
 #                                                     
 # LIMITATIONS:                                        
-#  - only coded for IPv6, any IPv4 is accidental
+#  - only coded for IPv6, no IPv4 support
 #  - survival of address changes and CPU sleep/wakeup is patchy
 #  - FQDN and URI locators incompletely supported          
 #  - no code for handling rapid mode negotiation                         
-#  - relay code is lazy (no rate control)                            
-#  - all unicast transactions use TCP (no unicast UDP)            
+#  - relay code is lazy (no rate control)                                        
 #  - workarounds for defects in Python socket module and
 #    Windows socket peculiarities. Not tested on Android.
 #
@@ -71,7 +74,7 @@
 ########################################################
 ########################################################"""
 
-_version = "15-BC-20210105"
+_version = "15-BC-20210115"
 
 ##########################################################
 # The following change log records significant changes,
@@ -177,7 +180,28 @@ _version = "15-BC-20210105"
 
 # 20200920 added DULL flag and behaviour
 
-# 20210105 renamed nonces as handles
+# 20210105 started API upgrade to draft-ietf-anima-grasp-api-10
+#          (aka API RFC)
+#          - tweaked default objective.value to None
+#          - renamed nonces as handles in API
+#          - fixed a printing bug
+
+# 20210106 - added overlap parameter to register_obj
+
+# 20200109 - added minimum_TTL parameter to discover
+#          - documented remaining deviations from API RFC
+
+# 20200110 - renamed snonce as shandle throughout
+#          - cleaned up naming of some globals, classes and functions
+#            to tidy up the 'help' results
+
+# 20200111 - cleaned up help texts
+#          - did all remaining s/nonce/handle/
+#          - made flood() RFC-compatible
+
+# 20200112 - cosmetic improvements
+
+# 20200115 - added partial option to dump_all()
 
 
 ##########################################################
@@ -197,7 +221,7 @@ if sys.version_info[0] < 3 or \
 # List of main classes and functions included in the API:
 
 def init(self):
-    __all__ = ['objective', 'asa_locator',
+    __all__ = ['objective', 'asa_locator', 'tagged_objective',
                    'register_asa', 'deregister_asa', 'register_obj',
                    'deregister_obj', 'discover',
                    'req_negotiate', 'negotiate_step', 'negotiate_wait',
@@ -289,8 +313,8 @@ def tname(x):
 
 class _asa_instance:
     """Internal use only"""
-    def __init__(self, nonce, name):
-        self.nonce = nonce    #the ASA's nonce
+    def __init__(self, handle, name):
+        self.handle = handle  #the ASA's handle
         self.name = name      #the ASA's name string
 
 # _asa_registry - list of _asa_instance
@@ -338,7 +362,8 @@ class _registered_objective:
     """Internal use only"""
     def __init__(self, objective, asa_handle):
         self.objective = objective
-        self.asa_id    = asa_handle
+        self.asa_id    = [asa_handle]
+        self.overlap_OK = False
         self.protocol = socket.IPPROTO_TCP #default
         self.locators = [] #list of explicit locators, if any
         self.port = 0
@@ -348,6 +373,7 @@ class _registered_objective:
         self.ttl = _discCacheDefTimeOut # discovery cache timeout in milliseconds
         self.listening = 0 # counts active listeners
         self.listen_q = None
+        
 
 # _obj_registry - list of _registered_objective
 # _obj_lock - lock for _obj_registry
@@ -436,7 +462,11 @@ class _session_handle:
 ####################################
 
 class tagged_objective:
-    """An objective tagged with its source asa_locator"""
+    """
+An objective tagged with its source asa_locator:
+ .objective  the objective
+ .source     an asa_locator (including expiry time) or None
+"""
     def __init__(self, objective, source):
         self.objective = objective
         self.source    = source # an asa_locator (including expiry time)
@@ -451,7 +481,7 @@ class tagged_objective:
 # Classes for message parsing      #
 ####################################
 
-class flooded_objective:
+class _flooded_objective:
     """
 An objective embedded in a flood:
  .obj    the objective
@@ -461,7 +491,7 @@ An objective embedded in a flood:
         self.obj = obj             #an objective
         self.loco = loco           #associated locator option
 
-class message:
+class _message:
     """
 A GRASP message:
  .mtype         message type, integer
@@ -470,20 +500,20 @@ A GRASP message:
  .ttl           ttl or waiting time (ms)
  .options       list of embedded option
  .obj           embedded objective
- .flood_list    list of flooded_objective
+ .flood_list    list of _flooded_objective
  .content       arbitrary content
 """
     def __init__(self, mtype):
         self.mtype = mtype          #message type, integer
         self.id_value = 0           #session ID, integer
-        self.id_source = unspec_address.packed #source address
+        self.id_source = _unspec_address.packed #source address
         self.ttl = 0                #ttl or waiting time, integer
         self.options = []           #list of options
         self.obj = None             #embedded objective
-        self.flood_list = None      #list of flooded_objective
+        self.flood_list = None      #list of _flooded_objective
         self.content = None         #arbitrary content
 
-class option:
+class _option:
     """
 A GRASP option:
  .otype  option type, integer
@@ -514,7 +544,7 @@ A GRASP option:
 _grasp_initialised = False #true after GRASP core has been initialised
 _skip_dialogue = False     #true if ASA calls grasp.skip_dialogue
 # _tls_required       #true if neither ACP nor QUADS is secure
-# crypto              #true if QUADS is secure
+# _crypto             #true if QUADS is secure
 # _secure             #true if either ACP or TLS or QUADS is secure
 # _rapid_supported    #true if rapid mode allowed
 # _mcq                #FIFO for incoming multicasts
@@ -529,9 +559,9 @@ _skip_dialogue = False     #true if ASA calls grasp.skip_dialogue
 # _mc_restart         #True if system wakeup detected - multicast listeners must restart
 # _i_sent_it          #session ID of most recent discovery multicast, used in a hack
 # test_mode           #True iff module is running in test mode
-# listen_self         #True iff listening to own LL multicasts for testing
-# test_divert         #True to force a divert message from discovery
-# mess_check          #True to trigger message check diagnostics
+# _listen_self        #True iff listening to own LL multicasts for testing
+# _test_divert        #True to force a divert message from discovery
+# _mess_check         #True to trigger message check diagnostics
 # _make_invalid       #True to throw a test M_INVALID
 # _make_badmess       #True to throw a malformed message
 # _dobubbles          #True to enable bubble printing
@@ -578,25 +608,24 @@ GRASP_DEF_TIMEOUT = 60000 # milliseconds
 GRASP_DEF_LOOPCT = 6
 GRASP_DEF_MAX_SIZE = 2048 # max message size
 
-unspec_address = ipaddress.IPv6Address('::') # Used in special cases to indicate link local address
+_unspec_address = ipaddress.IPv6Address('::') # Used in special cases
+                                              # to indicate link local
 
 ####################################
 # Support for flag bits            #
 ####################################
 
-def bit(b):
-    """Internal use only"""
-    # return bit b on
+def _bit(b):
+    """Return integer with bit b on"""
     return 2**b
 
-B_DISC = bit(F_DISC)
-B_NEG =  bit(F_NEG)
-B_SYNCH = bit(F_SYNCH)
-B_DRY = bit(F_NEG_DRY)
+B_DISC = _bit(F_DISC)
+B_NEG =  _bit(F_NEG)
+B_SYNCH = _bit(F_SYNCH)
+B_DRY = _bit(F_NEG_DRY)
 
 def _flagword(obj):
-    """Internal use only"""
-    #create the flags word for an objective
+    """Create the flags word for an objective"""
     _f = B_DISC #everything's discoverable
     if obj.neg:
         _f |= B_NEG
@@ -611,12 +640,6 @@ def _flags(flagword):
     #return Boolean flags for an objective
     return bool(flagword&B_NEG), bool(flagword&B_SYNCH), \
            bool(flagword&B_DRY)
-
-  
-##F_DISC_bits = bit(F_DISC)
-##F_NEG_bits = F_DISC_bits|bit(F_NEG)
-##F_SYNCH_bits = F_DISC_bits|bit(F_SYNCH)
-##F_NEG_DRY_bits = F_NEG_bits|bit(F_NEG_DRY)
 
 
 ####################################
@@ -767,16 +790,16 @@ etext = ["OK",
 
 #Global variables for QUADS
 
-secret_salt = b'\xf4tRj.t\xac\xce\xe1\x89\xf1\xfb\xc1\xc3L\xeb'
-crypto = False
-key = 0
-iv = 0
-cipher = None
+_qsalt = b'\xf4tRj.t\xac\xce\xe1\x89\xf1\xfb\xc1\xc3L\xeb'
+_crypto = False
+_key = 0
+_iv = 0
+_cipher = None
 
-def _ini_crypt(_key=None, _iv=None):
+def _ini_crypt(key=None, iv=None):
     """Internal use only; gets passsword and enables crypto"""
-    global crypto, key, iv, secret_salt, cipher
-    if not _key:
+    global _crypto, _key, _iv, _qsalt, _cipher
+    if not key:
         password = None
         confirm = 1
         print("Please enter the keying password for the domain.")
@@ -794,42 +817,42 @@ def _ini_crypt(_key=None, _iv=None):
         kdf = PBKDF2HMAC(
               algorithm=hashes.SHA256(),
               length=32,
-              salt=secret_salt,
+              salt=_qsalt,
               iterations=100000,
               backend=default_backend()
          )
 
-        key = kdf.derive(password)
-        _skip = key[0]%10
-        iv =  key[_skip:_skip+16]
+        _key = kdf.derive(password)
+        _skip = _key[0]%10
+        _iv =  _key[_skip:_skip+16]
 
     else:
         #use configured keys
-        key = _key
-        iv = _iv
+        _key = key
+        _iv = iv
         
-    #print("Keys: ", key, iv)
+    #print("Keys: ", _key, _iv)
     backend = default_backend()
-    cipher = Cipher(algorithms.AES(key), modes.CBC(iv), backend=backend)
-    crypto = True
+    _cipher = Cipher(algorithms.AES(_key), modes.CBC(_iv), backend=backend)
+    _crypto = True
     return
 
-def encrypt_msg(raw):
+def _encrypt_msg(raw):
     """Returns encrypted bytes"""
-    global cipher, crypto
-    if not crypto:
+    global _cipher, _crypto
+    if not _crypto:
         return raw
     padder = padding.PKCS7(128).padder()
-    encryptor = cipher.encryptor()
+    encryptor = _cipher.encryptor()
     msg = padder.update(raw) + padder.finalize()
     return encryptor.update(msg) + encryptor.finalize()
 
-def decrypt_msg(crypt):
+def _decrypt_msg(crypt):
     """Returns decrypted bytes"""
-    global cipher, crypto
-    if not crypto:
+    global _cipher, _crypto
+    if not _crypto:
         return crypt
-    decryptor = cipher.decryptor()
+    decryptor = _cipher.decryptor()
     unpadder = padding.PKCS7(128).unpadder()
     return unpadder.update(decryptor.update(crypt)) + unpadder.finalize()
 
@@ -852,7 +875,7 @@ def skip_dialogue(testing=False, selfing=False, diagnosing=False,
 # skip_dialogue(testing=False, selfing=False, diagnosing=False,
 #               quadsing=True, be_dull=False)
 #                                  
-# Tells GRASP to skip initial dialogue
+# A utility function that tells GRASP to skip initial dialogue
 #
 # Default is not test mode and not listening to own multicasts
 # and not printing message syntax diagnostics
@@ -863,17 +886,17 @@ def skip_dialogue(testing=False, selfing=False, diagnosing=False,
 # No return value                                  
 ####################################################################
 """
-    global _skip_dialogue, test_mode, listen_self, mess_check, _grasp_initialised, DULL
+    global _skip_dialogue, test_mode, _listen_self, _mess_check, _grasp_initialised, DULL
     if _grasp_initialised:
         return
     _skip_dialogue = True
     test_mode = testing
-    listen_self = selfing
-    mess_check = diagnosing
+    _listen_self = selfing
+    _mess_check = diagnosing
     if quadsing and not DULL:
         try:
             import quadsk
-            _ini_crypt(_key=quadsk.key,_iv=quadsk.iv)
+            _ini_crypt(key=quadsk.key,iv=quadsk.iv)
         except:
             tprint("No cryptography keys installed")
     else:
@@ -939,7 +962,7 @@ def deregister_asa(asa_handle, asa_name):
     i = _retrieve_asa(asa_name)
     if i == -1:
         return errors.noASA
-    elif (_asa_registry[i].nonce != asa_handle):
+    elif (_asa_registry[i].handle != asa_handle):
         _asa_lock.release()
         return errors.notYourASA
     else:
@@ -955,15 +978,17 @@ def deregister_asa(asa_handle, asa_name):
         j=0
         while j < len(_obj_registry):
             x = _obj_registry[j]
-            if x.asa_id == asa_handle:
-                #found a match - delete it, which shortens the list
-                del _obj_registry[j]
+            if asa_handle in x.asa_id:
+                x.asa_id.remove(asa_handle)
+                if x.asa_id == []:
+                    #last one - delete it, which shortens the list
+                    del _obj_registry[j]
             else:
                 j += 1
         _obj_lock.release()
         
         del _asa_registry[i]
-        #mark the nonce as inactive
+        #mark the handle as inactive
         _update_session(_session_instance(asa_handle,False,None))
         _asa_lock.release()
         return errors.ok
@@ -990,7 +1015,6 @@ def register_obj(asa_handle, obj, ttl=None, discoverable=False, \
 # even if the ASA is not listening.
 #
 # if overlap==True, more than one ASA may register this objective.
-# (NOT supported in this implementation.)
 #
 # if local==True, discovery must return a link-local address
 # (also applies in DULL mode)
@@ -1016,9 +1040,8 @@ def register_obj(asa_handle, obj, ttl=None, discoverable=False, \
         return errors.notBoth
     if (not obj.neg) and obj.dry:
         return errors.notDry
-    if overlap:
-        return errors.notOverlap
-        
+##    if overlap:
+##        return errors.notOverlap    
 
     #Clone the objective to avoid unintended side effects:
     #the copy in the registry will be distinct from the instance
@@ -1031,32 +1054,42 @@ def register_obj(asa_handle, obj, ttl=None, discoverable=False, \
         # no free space, fail
         _obj_lock.release()
         return errors.objFull
-    elif ([clash for clash in _obj_registry if clash.objective.name == obj.name]):
-        # duplicate, fail
-        _obj_lock.release()
-        return errors.objReg        
+
+    for clash in _obj_registry:
+        if clash.objective.name == obj.name:
+            if clash.overlap_OK and overlap:
+                # allowed overlap
+                ttprint("Overlapping for", obj.name)
+                clash.asa_id.append(asa_handle)
+                _obj_lock.release()
+                return errors.ok
+            else:
+                # disallowed overlap, fail
+                _obj_lock.release()
+                return errors.objReg
+            
+    #not previously registered, start a listener thread if needed
+    if obj.neg or obj.synch or obj.dry:
+        listen_sock=socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+        listen_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        listen_sock.bind(('',0))
+        listen_port = listen_sock.getsockname()[1]
+        _tcp_listen(listen_sock).start()
     else:
-        #start a listener thread if needed
-        if obj.neg or obj.synch or obj.dry:
-            listen_sock=socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
-            listen_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            listen_sock.bind(('',0))
-            listen_port = listen_sock.getsockname()[1]
-            _tcp_listen(listen_sock).start()
-        else:
-            listen_port = 0
-        #append new one
-        new_obj = _registered_objective(obj, asa_handle)
-        new_obj.port = listen_port
-        new_obj.discoverable = discoverable # whether it can be discovered immediately
-        new_obj.local = local or DULL # whether it must be assigned a link-local address
-        new_obj.rapid = rapid # whether it should support rapid mode
-        new_obj.locators = locators
-        if tname(ttl) == "int" and ttl>0:
-            new_obj.ttl = ttl
-        _obj_registry.append(new_obj)
-        _obj_lock.release()
-        return errors.ok
+        listen_port = 0
+    #append new one
+    new_obj = _registered_objective(obj, asa_handle)
+    new_obj.overlap_OK = overlap
+    new_obj.port = listen_port
+    new_obj.discoverable = discoverable # whether it can be discovered immediately
+    new_obj.local = local or DULL # whether it must be assigned a link-local address
+    new_obj.rapid = rapid # whether it should support rapid mode
+    new_obj.locators = locators
+    if tname(ttl) == "int" and ttl>0:
+        new_obj.ttl = ttl
+    _obj_registry.append(new_obj)
+    _obj_lock.release()
+    return errors.ok
     
 
 
@@ -1066,7 +1099,8 @@ def deregister_obj(asa_handle, obj):
 # deregister_obj(asa_handle, objective)
 #
 # Stops all operations on this objective (if registered)
-# by removing it from the registry.
+# by removing it from the registry. (Except for an objective
+# with overlapped registrations.)
 #
 # return zero if successful
 # return errorcode if failure
@@ -1082,11 +1116,14 @@ def deregister_obj(asa_handle, obj):
         x =_obj_registry[i]
         if x.objective.name == obj.name:
             #found it
-            if x.asa_id != asa_handle:
+            if asa_handle not in x.asa_id:
                 _obj_lock.release()
                 return errors.notYourObj
-            #now delete it
-            del _obj_registry[i]            
+            #deregister the ASA from the objective
+            x.asa_id.remove(asa_handle)
+            if x.asa_id == []:
+                #last one - delete it, which shortens the list
+                del _obj_registry[i]            
             _obj_lock.release()
             return errors.ok
     _obj_lock.release()
@@ -1126,7 +1163,8 @@ def _recvraw(sock):
 
 
 
-def discover(asa_handle, obj, timeout, flush=False, relay_ifi=False, relay_snonce=None):
+def discover(asa_handle, obj, timeout, flush=False, minimum_TTL=-1,
+             relay_ifi=False, relay_shandle=None):
     """
 ############################################################## 
 # discover(asa_handle, objective, timeout)
@@ -1137,7 +1175,8 @@ def discover(asa_handle, obj, timeout, flush=False, relay_ifi=False, relay_snonc
 # If there are cached results, they are returned immediately.
 # If not, results will be collected until the timeout occurs.
 #
-# Optional parameter flush=True will flush cached results first
+# Optional parameter flush=True will flush all cached results first
+# Optional parameter minimum_TTL will flush stale cached results first
 #
 # Other optional parameters are for GRASP internal use only
 #
@@ -1159,6 +1198,13 @@ def discover(asa_handle, obj, timeout, flush=False, relay_ifi=False, relay_snonc
     if DULL:
         obj.loop_count = 1
 
+    if minimum_TTL > 0:
+        #user's expiry deadline
+        _exdl = int(time.monotonic()) + minimum_TTL/1000
+    else:
+        #normal expiry deadline is NOW
+        _exdl = int(time.monotonic())        
+
     _disc_lock.acquire()
     # Can't use a comprehension because we need the actual
     # list entry in order to delete it.
@@ -1166,18 +1212,18 @@ def discover(asa_handle, obj, timeout, flush=False, relay_ifi=False, relay_snonc
         x = _discovery_cache[i]
         if x.objective.name == obj.name:
             del(_discovery_cache[i])
-            if flush:
+            if flush or (minimum_TTL == 0):
                 ttprint("Discover flushing",obj.name)
                 break
             else:
                 _discovery_cache.append(x)   #make it Most Recently Used
-                if not test_divert:
+                if not _test_divert:
                     # delete any expired locators
                     j = 0
                     while len(x.asa_locators) > j:
                         _ex = x.asa_locators[j].expire
                         ttprint("Discovery expiry data:",obj.name,_ex, int(time.monotonic()))
-                        if _ex and (_ex < int(time.monotonic())):
+                        if _ex and (_ex < _exdl):
                             ttprint("Deleting stale discovery",j)
                             del x.asa_locators[j]
                         else:
@@ -1193,7 +1239,7 @@ def discover(asa_handle, obj, timeout, flush=False, relay_ifi=False, relay_snonc
 
     if not relay_ifi:
         disc_sess = _new_session(_session_locator)
-        snonce=_session_handle(disc_sess,_session_locator.packed)
+        shandle=_session_handle(disc_sess,_session_locator.packed)
         #hack to detect own replies when running two instances
         _i_sent_it = disc_sess
         _to = _discTimeoutUnit*obj.loop_count
@@ -1205,9 +1251,9 @@ def discover(asa_handle, obj, timeout, flush=False, relay_ifi=False, relay_snonc
         # We are relaying, so cache remote session
         # We trust the timeout set by the relay process
         # (Note that if session is already cached, _insert_session will do nothing)
-        snonce = relay_snonce
-        disc_sess = snonce.id_value
-        news = _session_instance(snonce.id_value,True,snonce.id_source)
+        shandle = relay_shandle
+        disc_sess = shandle.id_value
+        news = _session_instance(shandle.id_value,True,shandle.id_source)
         news.id_relayed = True
         _insert_session(news)
 
@@ -1216,7 +1262,7 @@ def discover(asa_handle, obj, timeout, flush=False, relay_ifi=False, relay_snonc
     _drq = queue.Queue(_discQlimit) # Limit number of pending discovery responses
 
     # Hang the queue on the session id
-    s=_get_session(snonce)
+    s=_get_session(shandle)
     if s:
         s.id_dq = _drq
         if not _update_session(s):
@@ -1226,7 +1272,7 @@ def discover(asa_handle, obj, timeout, flush=False, relay_ifi=False, relay_snonc
 
     # Prepare the message
     if relay_ifi:
-        _sloc = snonce.id_source
+        _sloc = shandle.id_source
     else:
         _sloc = _session_locator.packed
     msg_bytes = _ass_message(M_DISCOVERY, disc_sess, _sloc, obj)
@@ -1285,13 +1331,13 @@ def discover(asa_handle, obj, timeout, flush=False, relay_ifi=False, relay_snonc
         if x.objective.name == obj.name:
             answer = x.asa_locators
             _disc_lock.release()
-            _disactivate_session(snonce)
+            _disactivate_session(shandle)
             del _drq #garbage collect
             return errors.ok, answer
     _disc_lock.release()
         
     #no reply, return empty list
-    _disactivate_session(snonce)
+    _disactivate_session(shandle)
     ttprint("Returning empty discovery result")
     del _drq #garbage collect
     return errors.ok, []
@@ -1356,46 +1402,58 @@ def _drloop(ifi,ttl,options,rec_obj,obj,inDivert):
 #                                  #
 ####################################
 
-
-
 def req_negotiate(asa_handle, obj, peer, timeout, noloop=False):
     """
 ##############################################################
-# req_negotiate(asa_handle, objective, peer, timeout)
+# req_negotiate(asa_handle, obj, peer, timeout)
 #
 # Request negotiation session with a peer ASA.
 #
+# (DIFFERENT from the official API)
+#
 # asa_handle identifies the calling ASA
 #
-# objective must include the requested value
+# obj is a GRASP objective including the requested value
 #
-# Note that the objective's loop_count value should be set to a
-# suitable value by the ASA. If not, the GRASP default will apply.
+# The objective's loop_count value should be set to a suitable
+# value by the ASA. If not, the GRASP default will apply.
 #
-# peer is the target node; it must be an asa_locator as returned by discover()
+# peer is the target node, an asa_locator as returned by discover()
 # If peer is None, discovery is performed first.
 #
 # timeout in milliseconds (None for default)
 #
-# nloop=True in order to use gsend() and grecv() for this session
+# noloop=True in order to use gsend() and grecv() for this session
 #
 # Launch in a new thread if asynchronous operation required.
 #
-# return zero, session_handle, objective
+# Four possible return conditions are possible:
 #
-# The returned objective contains the first value proffered by the
-# negotiation peer. Note that this instance of the objective
-# MUST be used in the subsequent negotiation calls because
-# it contains the loop count.
+# 1) return zero, None, objective
+#
+# The peer has agreed; the returned objective contains the agreed value.
+#
+# 2) return zero, session_handle, objective
+#
+# Negotiation continues.
+#
+# The returned objective contains the first value offered by the
+# negotiation peer. This instance of the objective MUST be used in
+# subsequent negotiation steps because it contains the loop count.
 #
 # The ASA MUST store the session_handle (an opaque Python object)
-# and use it in the subsequent negotiation calls
+# and use it in the subsequent negotiation steps.
+# 
+# 3) return errors.declined, None, string
 #
-# return zero, None, objective - returns accepted value
-# return errors.declined, None, string - other end declined, string gives reason
-# return errorcode, None, None  - negotiation failed,
-#                                 errorcode gives reason,
-#                                 exponential backoff RECOMMENDED before retry.
+# The peer declined further negotiation, the string gives a reason
+# if provided by the peer.
+#
+# 4) For any non-zero errorcode except errors.declined:
+#    return errorcode, None, None
+#
+# The negotiation failed, errorcode gives reason,
+# exponential backoff RECOMMENDED before retry.
 ##############################################################
 """
 
@@ -1429,7 +1487,7 @@ def req_negotiate(asa_handle, obj, peer, timeout, noloop=False):
     #create TCP socket, assemble message and send it
     #(lazy code, not checking that TCP is the right one to use)
     neg_sess = _new_session(None)
-    snonce = _session_handle(neg_sess,None)
+    shandle = _session_handle(neg_sess,None)
     sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
     if peer.locator.is_link_local:
         _ifi = peer.ifi
@@ -1444,34 +1502,32 @@ def req_negotiate(asa_handle, obj, peer, timeout, noloop=False):
     except OSError as ex:
         tprint("Socket error sending negotiation request", ex)
         sock.close()
-        _disactivate_session(snonce)
+        _disactivate_session(shandle)
         return errors.sockErrNegRq, None, None
 
     if noloop:
         # user wants to use session for grecv()/gsend()
         # first operation for this socket - hang it onto session
         #  - this is normally done by _negloop()
-        sess = _get_session(snonce)
+        sess = _get_session(shandle)
         if not sess:
             return errors.noSession, None, None
         sess.id_sock = sock
         _update_session(sess)
-        return errors.noReply, snonce, None
+        return errors.noReply, shandle, None
     
     # call common code to wait for reply and handle it
-    return _negloop(snonce, obj, timeout, sock, True)
-    
-              
+    return _negloop(shandle, obj, timeout, sock, True)          
 
 
-
-
-def negotiate_step(asa_handle, snonce, obj, timeout):
+def negotiate_step(asa_handle, shandle, obj, timeout):
     """
 ##############################################################
 # negotiate_step(asa_handle, session_handle, objective, timeout)
 #
 # Continue negotiation session
+#
+# (DIFFERENT from the official API)
 #
 # objective contains the next proffered value
 # Note that this instance of the objective
@@ -1497,8 +1553,8 @@ def negotiate_step(asa_handle, snonce, obj, timeout):
     if not _secure:
         return errors.noSecurity, None, None
     #verify session
-    neg_sess = snonce.id_value
-    s = _get_session(snonce)
+    neg_sess = shandle.id_value
+    s = _get_session(shandle)
     if not s:
         return errors.noSession, None, None
     #retrieve the socket
@@ -1529,20 +1585,20 @@ def negotiate_step(asa_handle, snonce, obj, timeout):
     except OSError as ex:
         ttprint("Socket error sending negotiation step", ex)
         sock.close()
-        _disactivate_session(snonce)
+        _disactivate_session(shandle)
         return errors.sockErrNegStep, None, None
     
     if not timeout:
         timeout = GRASP_DEF_TIMEOUT
     
     # call common code to wait for reply and handle it
-    return _negloop(snonce, obj, timeout, sock, False)
+    return _negloop(shandle, obj, timeout, sock, False)
 
     
  
 
 
-def _negloop(snonce, obj, timeout, sock, new_request):
+def _negloop(shandle, obj, timeout, sock, new_request):
     """Internal use only"""
 ############################################
 # internal function for req_negotiate()
@@ -1551,7 +1607,7 @@ def _negloop(snonce, obj, timeout, sock, new_request):
 # waits for a negotiation response and
 # handles it
 # 
-# inputs are session nonce, user's objective,
+# inputs are session handle, user's objective,
 # user's timeout, open socket, and a flag 
 # set by req_negotiate
 #
@@ -1559,7 +1615,7 @@ def _negloop(snonce, obj, timeout, sock, new_request):
 # 
 ############################################
 
-    neg_sess = snonce.id_value
+    neg_sess = shandle.id_value
     loopAgain = True
     while loopAgain:
         loopAgain = False  #will loop only if we get a Wait message
@@ -1569,15 +1625,15 @@ def _negloop(snonce, obj, timeout, sock, new_request):
                     
             if len(rawmsg) == 0:
                 sock.close()
-                _disactivate_session(snonce)
+                _disactivate_session(shandle)
                 return errors.noPeer, None, None
                     
             ttprint("negloop: raw reply:", rawmsg)
             try:
-                payload = cbor.loads(decrypt_msg(rawmsg))
+                payload = cbor.loads(_decrypt_msg(rawmsg))
             except:
                 sock.close()
-                _disactivate_session(snonce)
+                _disactivate_session(shandle)
                 return errors.CBORfail, None, None
             ttprint("negloop: CBOR->Python:", payload)
             msg = _parse_msg(payload)
@@ -1585,12 +1641,12 @@ def _negloop(snonce, obj, timeout, sock, new_request):
                 #invalid message, cannot process it
                 tprint("Negotiate_step: invalid message format")
                 sock.close()
-                _disactivate_session(snonce)
+                _disactivate_session(shandle)
                 return errors.noValidStep, None, None
 
             if msg.id_value == neg_sess and new_request:
                 # first operation for this socket - hang it onto session
-                sess = _get_session(snonce)
+                sess = _get_session(shandle)
                 if not sess:
                     return errors.noSession, None, None
                 sess.id_sock = sock
@@ -1607,10 +1663,10 @@ def _negloop(snonce, obj, timeout, sock, new_request):
                 rec_obj.loop_count -= 1
                 rec_obj = _detag_obj(rec_obj)
                 if (rec_obj.name == obj.name) and (rec_obj.neg == True):
-                    return errors.ok, snonce, rec_obj #session and socket still open
+                    return errors.ok, shandle, rec_obj #session and socket still open
                 else:
                     sock.close()
-                    _disactivate_session(snonce)
+                    _disactivate_session(shandle)
                     return errors.invalidNeg, None, None
                 
             elif msg.mtype == M_WAIT and msg.id_value == neg_sess:
@@ -1622,7 +1678,7 @@ def _negloop(snonce, obj, timeout, sock, new_request):
                 ttprint("Negotiate_step: got END")
                 # we're done
                 sock.close()
-                _disactivate_session(snonce)
+                _disactivate_session(shandle)
                 if msg.options[0].otype == O_ACCEPT:
                     return errors.ok, None, obj
                 elif msg.options[0].otype == O_DECLINE:
@@ -1634,18 +1690,18 @@ def _negloop(snonce, obj, timeout, sock, new_request):
                 ttprint("Negotiate_step: invalid negotiation response")     
         except OSError as ex:
             sock.close()
-            _disactivate_session(snonce)
+            _disactivate_session(shandle)
             ttprint("Socket error receiving negotiation response", ex)
             return errors.noNegReply, None, None
     #if all else fails...
     sock.close()
-    _disactivate_session(snonce)
+    _disactivate_session(shandle)
     return errors.noValidStep, None, None
 
 
 
 
-def negotiate_wait(asa_handle, snonce, timeout):
+def negotiate_wait(asa_handle, shandle, timeout):
     """
 ##############################################################
 # negotiate_wait(asa_handle, session_handle, timeout)
@@ -1666,7 +1722,7 @@ def negotiate_wait(asa_handle, snonce, timeout):
     if not _secure:
         return errors.noSecurity
     #verify session
-    s = _get_session(snonce)
+    s = _get_session(shandle)
     if not s:
         return errors.noSession
     #retrieve the socket
@@ -1683,13 +1739,13 @@ def negotiate_wait(asa_handle, snonce, timeout):
     except OSError as ex:
         ttprint("Socket error sending wait message", ex)
         sock.close()
-        _disactivate_session(snonce)
+        _disactivate_session(shandle)
         return errors.sockErrWait
     return errors.ok
 
 
 
-def end_negotiate(asa_handle, snonce, result, reason=None):
+def end_negotiate(asa_handle, shandle, result, reason=None):
     """
 ##############################################################
 # end_negotiate(asa_handle, session_handle, result, reason="why")
@@ -1702,8 +1758,8 @@ def end_negotiate(asa_handle, snonce, result, reason=None):
 # return zero if successful
 # return errorcode if failure
 #
-# Note that a redundant call to end_negotiate will get a
-# reply such as (False, "No session") which does not need
+# Note that a redundant call to end_negotiate will get an
+# errorcode such as noSession, which does not need
 # to be treated as an error.
 ##############################################################
 """
@@ -1714,7 +1770,7 @@ def end_negotiate(asa_handle, snonce, result, reason=None):
     if not _secure:
         return errors.noSecurity
     #verify session
-    s = _get_session(snonce)
+    s = _get_session(shandle)
     if not s:
         return errors.noSession
     #retrieve the socket
@@ -1724,28 +1780,28 @@ def end_negotiate(asa_handle, snonce, result, reason=None):
     
     #now send an end message, close the socket etc & return
     if result:
-        end_opt = option(O_ACCEPT)
+        end_opt = _option(O_ACCEPT)
     else:
-        end_opt = option(O_DECLINE)
+        end_opt = _option(O_DECLINE)
         end_opt.reason = reason
         ttprint("Set decline reason:",end_opt.reason)
     msg_bytes = _ass_message(M_END, s.id_value, None, [end_opt])
     try:
         sock.sendall(msg_bytes,0)
         sock.close()
-        _disactivate_session(snonce)
+        _disactivate_session(shandle)
     except OSError as ex:
         ttprint("Socket error sending end message", ex)
         sock.close()
-        _disactivate_session(snonce)
+        _disactivate_session(shandle)
         return errors.sockErrEnd
     return errors.ok
 
 
-def send_invalid(asa_handle, snonce, info="No information"):
+def send_invalid(asa_handle, shandle, info="No information"):
     """
 ##############################################################
-# send_invalid(asa_handle, snonce, info="Diagnostic data")
+# send_invalid(asa_handle, shandle, info="Diagnostic data")
 #
 # Send invalid message
 #
@@ -1765,7 +1821,7 @@ def send_invalid(asa_handle, snonce, info="No information"):
     if not _secure:
         return errors.noSecurity
     #verify session
-    s = _get_session(snonce)
+    s = _get_session(shandle)
     if not s:
         return errors.noSession
     #retrieve the socket
@@ -1778,11 +1834,11 @@ def send_invalid(asa_handle, snonce, info="No information"):
     try:
         sock.sendall(msg_bytes,0)
         sock.close()
-        _disactivate_session(snonce)
+        _disactivate_session(shandle)
     except OSError as ex:
         ttprint("Socket error sending end message", ex)
         sock.close()
-        _disactivate_session(snonce)
+        _disactivate_session(shandle)
         return errors.sockErrEnd
     return errors.ok
 
@@ -1793,17 +1849,15 @@ def listen_negotiate(asa_handle, obj):
 ##############################################################
 # listen_negotiate(asa_handle, objective)
 #
-# Instructs GRASP to listen for negotiation
-# requests for the given objective.
-#
-# Parameter is the objective of interest (no specific value needed)
+# Instructs GRASP to listen for negotiation requests for the
+# given objective. Its current value is not significant.
 #
 # This function will block waiting for an incoming request.
 # Call in a separate thread if asynchronous operation required.
 #
-# This call only returns after an incoming req_negotiate
+# This call only returns after an incoming negotiation request
 # and must be followed by negotiate_step and/or negotiate_wait
-# and/or end_negotiate
+# and/or end_negotiate.
 # listen_negotiate must then be repeated to restart listening.
 #
 # return zero, session_handle, requested_objective
@@ -1816,7 +1870,7 @@ def listen_negotiate(asa_handle, obj):
 # The ASA MUST store the session_handle (an opaque Python object)
 # and use it in the subsequent negotiation calls.
 #
-# return errorcode, None, None     
+# return errorcode, None, None in case of error   
 ##############################################################
 """
 
@@ -1874,7 +1928,7 @@ def listen_negotiate(asa_handle, obj):
     _obj_lock.release()
     del q
     
-    #build the session instance and nonce
+    #build the session instance and handle
     s_id = rq[2].id_value
     s_source = rq[1]
     s_handle = _session_handle(s_id,s_source.packed)
@@ -1922,10 +1976,12 @@ def stop_negotiate(asa_handle, obj):
     _obj_lock.release() 
     return errors.ok
 
-def gsend(asa_handle, snonce, message):
+def gsend(asa_handle, shandle, message):
     """
 ##############################################################
-# gsend(asa_handle, snonce, message)
+# gsend(asa_handle, shandle, message)
+#
+# (NOT part of the official API)
 #
 # Sends over the socket for an opened negotiation session
 #
@@ -1942,7 +1998,7 @@ def gsend(asa_handle, snonce, message):
     if not _secure:
         return errors.noSecurity
     #verify session
-    s = _get_session(snonce)
+    s = _get_session(shandle)
     if not s:
         return errors.noSession
     #retrieve the socket
@@ -1953,18 +2009,20 @@ def gsend(asa_handle, snonce, message):
         #Convert message to CBOR, encrypt, and send
         try:
             #Convert message to CBOR, encrypt, and send
-            sock.sendall(encrypt_msg(cbor.dumps(message)),0)
+            sock.sendall(_encrypt_msg(cbor.dumps(message)),0)
             return errors.ok
         except OSError as ex:
             ttprint("Socket error in gsend", ex)
             sock.close()
-            _disactivate_session(snonce)
+            _disactivate_session(shandle)
             return errors.sockErr
 
-def grecv(asa_handle, snonce, timeout):
+def grecv(asa_handle, shandle, timeout):
     """
 ##############################################################
-# grecv(asa_handle, snonce, timeout)
+# grecv(asa_handle, shandle, timeout)
+#
+# (NOT part of the official API)
 #
 # Receives over the socket for an opened negotiation session
 #
@@ -1980,7 +2038,7 @@ def grecv(asa_handle, snonce, timeout):
     if not _secure:
         return errors.noSecurity, None
     #verify session
-    s = _get_session(snonce)
+    s = _get_session(shandle)
     if not s:
         return errors.noSession, None
     #retrieve the socket
@@ -1994,22 +2052,22 @@ def grecv(asa_handle, snonce, timeout):
                     
             if len(rawmsg) == 0:
                 sock.close()
-                _disactivate_session(snonce)
+                _disactivate_session(shandle)
                 return errors.noPeer, None
                     
             ttprint("grecv: raw reply:", rawmsg)
             try:
-                payload = cbor.loads(decrypt_msg(rawmsg))
+                payload = cbor.loads(_decrypt_msg(rawmsg))
             except:
                 sock.close()
-                _disactivate_session(snonce)
+                _disactivate_session(shandle)
                 return errors.CBORfail, None
             ttprint("grecv: CBOR->Python:", payload)
             return errors.ok, payload
 
         except OSError as ex:
             sock.close()
-            _disactivate_session(snonce)
+            _disactivate_session(shandle)
             ttprint("Socket error receiving gmessage", ex)
             return errors.noReply, None
     
@@ -2026,9 +2084,9 @@ def grecv(asa_handle, snonce, timeout):
 def synchronize(asa_handle, obj, loc, timeout):
     """
 ##############################################################
-# synchronize(asa_handle, objective, locator, timeout)
+# synchronize(asa_handle, obj, locator, timeout)
 #
-# Request synchronized value of the given objective.
+# Request synchronized value of the given GRASP objective.
 #
 # locator is an asa_locator as returned by discover()
 #
@@ -2038,23 +2096,24 @@ def synchronize(asa_handle, obj, loc, timeout):
 # the first flooded value in the cache is returned.
 # 
 # Otherwise, synchronization with a discovered ASA is performed.
-# In that case, if the locator is None, discovery is performed first
+# In that case, if the locator is None, discovery is performed,
 # unless the objective is in the discovery cache already.
-# If the discovery response provided a rapid mode objective,
+# If the discovery response provides a rapid mode objective,
 # synchronization is skipped and that objective is returned
 #
-# This call should be repeated whenever the value is needed.
+# This call should be repeated whenever the latest value is needed.
 # Call in a separate thread if asynchronous operation required.
 #
 # Since this is essentially a read operation, any ASA can do
-# it. Therefore we check that the ASA is registered but the
+# it. GRASP checks that the ASA is registered, but the
 # objective doesn't need to be registered by the calling ASA.
 #
-# return zero, synch_objective   returns objective with its synchronized value
+# return zero, synch_objective returns objective with its
+# latest synchronized value
 #
-# return errorcode, None    synchronization failed
-#                           errorcode gives reason.
-#                           Exponential backoff RECOMMENDED before retry.
+# return errorcode, None synchronization failed
+#                        errorcode gives reason.
+#                        Exponential backoff RECOMMENDED before retry.
 ##############################################################
 """
 
@@ -2111,7 +2170,7 @@ def synchronize(asa_handle, obj, loc, timeout):
     #create TCP socket, assemble message and send it
     #(lazy code, not checking that TCP is the right one to use)
     sync_sess = _new_session(None)
-    snonce = _session_handle(sync_sess, None)
+    shandle = _session_handle(sync_sess, None)
     sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
     if loc.locator.is_link_local:
         _ifi = loc.ifi
@@ -2126,7 +2185,7 @@ def synchronize(asa_handle, obj, loc, timeout):
     except OSError as ex:
         tprint("Socket error sending synch request", ex)
         sock.close()
-        _disactivate_session(snonce)
+        _disactivate_session(shandle)
         return errors.sockErrSynRq, None
     #now listen for reply
     try:
@@ -2134,36 +2193,36 @@ def synchronize(asa_handle, obj, loc, timeout):
         rawmsg, send_addr = _recvraw(sock)
         sock.close()
         if len(rawmsg) == 0:
-            _disactivate_session(snonce)
+            _disactivate_session(shandle)
             return errors.noListener, None
         ttprint("Synch: raw reply:", rawmsg)
         try:
-            payload = cbor.loads(decrypt_msg(rawmsg))
+            payload = cbor.loads(_decrypt_msg(rawmsg))
         except:
-            _disactivate_session(snonce)
+            _disactivate_session(shandle)
             return errors.CBORfail, None
         msg = _parse_msg(payload)
         if not msg:
             #invalid message, cannot process it
-            _disactivate_session(snonce)
+            _disactivate_session(shandle)
             return errors.noValidSynch, None
         ttprint("Synch: CBOR->Python:", payload)
         if msg.mtype == M_SYNCH and msg.id_value == sync_sess:
             rec_obj = msg.obj
             rec_obj.loop_count -= 1
             if rec_obj.name == obj.name:
-                _disactivate_session(snonce)
+                _disactivate_session(shandle)
                 return errors.ok, _detag_obj(rec_obj) #we're done!
         else:
             #if it isn't a valid synch message, ignore it
             ttprint("Invalid synch response")     
     except OSError as ex:
         sock.close()
-        _disactivate_session(snonce)
+        _disactivate_session(shandle)
         tprint("Socket error receiving synch message", ex)
         return errors.noSynchReply, None
     #all else fails...
-    _disactivate_session(snonce)
+    _disactivate_session(shandle)
     return errors.noValidSynch, None               
 
 
@@ -2330,8 +2389,13 @@ def flood(asa_handle, ttl, *tagged_obj):
 # Checks that the ASA registered each objective.
 # This call may be repeated whenever the value changes.
 #
-# The objective(s) must be tagged with a locator
-# which is either [] or a valid asa_locator
+# The tagged objective(s) are in the class tagged_objective,
+# so must be tagged with a locator, which is either None or
+# a valid asa_locator
+#
+# The 3rd parameter can be a list of [tagged_objective,]
+# as per the official API, or a repeated parameter
+# of type tagged_objective.
 #
 # If the first objective is tagged with the unspecified
 # address, the entire flood is treated as link-local:
@@ -2349,21 +2413,35 @@ def flood(asa_handle, ttl, *tagged_obj):
 
     if not _secure and not DULL:
         return errors.noSecurity #allowed in DULL mode
-   
+
+    # For compatibility between the experimental API and the
+    # RFC API, we have to scan the inputs...
+    tagged_objs = []
     for x in tagged_obj:
+        if tname(x) == "tagged_objective":
+            #assume experimental API
+            tagged_objs.append(x)
+        elif tname(x) == "list":
+            #assume RFC API
+            tagged_objs = x
+            break
+        else:
+            return errors.unspec
+   
+    for x in tagged_objs:
         errorcode = _check_asa_obj(asa_handle, x.objective, True)
         if errorcode:
             return errorcode
 
-    if DULL or (tagged_obj[0].source and (tagged_obj[0].source.locator == unspec_address)):
-        tagged_obj[0].objective.loop_count = 1 # force link-local loop count
+    if DULL or (tagged_objs[0].source and (tagged_objs[0].source.locator == _unspec_address)):
+        tagged_objs[0].objective.loop_count = 1 # force link-local loop count
         _local_flood = True
     else:
         _local_flood = False
 
     _floodl = []
             
-    for x in tagged_obj:
+    for x in tagged_objs:
         if x.source == None:
             _l = [] # empty option
         elif x.source.locator == None:
@@ -2396,7 +2474,7 @@ def flood(asa_handle, ttl, *tagged_obj):
         for _o in _floodl:
             _l = _o[1]
             if _l != []:
-                if _l[1] == unspec_address.packed:
+                if _l[1] == _unspec_address.packed:
                     _l[1] = _ll_zone_ids[i][1].packed # replace with LL address
         msg_bytes = _ass_message(M_FLOOD, flood_session, _session_locator.packed, ttl, _floodl)
         try:
@@ -2413,19 +2491,19 @@ def get_flood(asa_handle, obj):
 ##############################################################
 # get_flood(asa_handle, objective)
 #
-# Request flooded values of the given objective.
+# Request unexpired flooded values of the given objective.
 #
 # This call should be repeated whenever the value is needed.
 #
 # Since this is essentially a read operation, any ASA can do
-# it. Therefore we check that the ASA is registered but the
+# it. GRASP checks that the ASA is registered, but the
 # objective doesn't need to be registered by the calling ASA.
 #
 # return zero, tagged_objectives   returns a list of tagged_objective
 #
-# return errorcode, None    call failed
-#                           errorcode gives reason.
-#                           Exponential backoff RECOMMENDED before retry.
+# return errorcode, None call failed
+#                        errorcode gives reason.
+#                        Exponential backoff RECOMMENDED before retry.
 ##############################################################
 """
 
@@ -2481,28 +2559,25 @@ def expire_flood(asa_handle, tagged_obj):
 
     return errors.ok
 
+########## END OF OFFICIAL API FUNCTIONS ###########
+
 ####################################
 #                                  #
 # Internal functions               #
 #                                  #
 ####################################
 
-def hexit(xx):
-    """Internal use only"""
+def _hexit(xx):
+    """Internal use only - bytes to hex ASCII"""
     if tname(xx) == "bytes":
         return binascii.b2a_hex(xx)
     elif tname(xx) == "list":
         for i in range(len(xx)):
-            xx[i] = hexit(xx[i])            
+            xx[i] = _hexit(xx[i])            
     return(xx)
 
-##def gprint(*whatever, sep=' ', end='\n', file=sys.stdout, flush=False):
-##    """To help with Python 2 downgrade, use exactly like print()"""
-##    print(*whatever,sep=sep,end=end,file=file,flush=flush)
-
-
 def tprint(*whatever,ttp=False):
-    """Multi-thread printing, used exactly like print()"""
+    """Utility function for thread-safe printing, used exactly like print()"""
 
     #first get the module name
     a,b = str(threading.current_thread()).split('<')
@@ -2516,7 +2591,7 @@ def tprint(*whatever,ttp=False):
         try:
             if test_mode:           #want bytes printed in hex
                 xx=copy.deepcopy(x) #avoid overwriting anything
-                xx = hexit(xx)
+                xx = _hexit(xx)
             else:
                 xx=x               
             _s=_s+str(xx)+" "
@@ -2531,7 +2606,7 @@ def tprint(*whatever,ttp=False):
         if len(_s) > 200:
             _s = _s[:200]+' ...' #truncate to fit
         try:
-            bubbleQ.put(_s, block=False)
+            _bubbleQ.put(_s, block=False)
         except:
             pass   # Skip it if queue is full
     _print_lock.release()
@@ -2539,7 +2614,8 @@ def tprint(*whatever,ttp=False):
 
 
 def ttprint(*whatever):
-    """Multi-thread printing in test mode only, used exactly like print()"""
+    """Utility function for thread-safe printing in test mode only,
+used exactly like print()"""
 
     if test_mode:
         tprint(*whatever,ttp=True)
@@ -2554,7 +2630,7 @@ def ttprint(*whatever):
     
 def init_bubble_text(cap):
     """
-    Switch on bubble printing, which uses tkinter
+    Utility function to enable bubble printing, which uses tkinter.
     cap: a string that labels the bubble window.
     """
 
@@ -2656,7 +2732,7 @@ def init_bubble_text(cap):
                 # Check print queue unless pausing
                 if _pause <= 0:
                     try:
-                        _tx = bubbleQ.get(block=False)
+                        _tx = _bubbleQ.get(block=False)
                     
                         #Build a bubble
                         _m=speakEasy(random.randrange(250,270),int(HEIGHT-70),_tx)
@@ -2755,12 +2831,12 @@ def _retrieve_asa(asa_name):
 def _no_handle(asa_handle):
     """Internal use only"""
 ####################################
-# Check a nonce                    #
+# Check a handle                    #
 #                                  #
-# return True if nonce is absent   #
+# return True if handle is absent   #
 ####################################
     # don't think we need the lock for this
-    return not([x for x in _asa_registry if x.nonce == asa_handle])
+    return not([x for x in _asa_registry if x.handle == asa_handle])
 
 
 
@@ -2782,7 +2858,7 @@ def _check_asa_obj(asa_handle, obj, sending_synch):
     if _no_handle(asa_handle):
         return errors.noASA
     _obj_lock.acquire()
-    if (obj.neg or sending_synch) and not([x for x in _obj_registry if x.objective.name == obj.name and x.asa_id == asa_handle]):
+    if (obj.neg or sending_synch) and not([x for x in _obj_registry if x.objective.name == obj.name and asa_handle in x.asa_id]):
         _obj_lock.release()
         return errors.notYourObj
     _obj_lock.release()
@@ -2870,7 +2946,7 @@ def _insert_session(session_inst, _check_race = False):
 
 
 
-def _get_session(snonce):
+def _get_session(shandle):
     """Internal use only"""
 ####################################
 # Get a Session ID entry by ID and #
@@ -2882,7 +2958,7 @@ def _get_session(snonce):
 ####################################   
     _sess_lock.acquire()
     for s in _session_id_cache:
-        if snonce.id_value == s.id_value and snonce.id_source == s.id_source and s.id_active:
+        if shandle.id_value == s.id_value and shandle.id_source == s.id_source and s.id_active:
             _sess_lock.release()
             return s
     _sess_lock.release()
@@ -2912,7 +2988,7 @@ def _update_session(session_inst):
 
 
 
-def _disactivate_session(snonce):
+def _disactivate_session(shandle):
     """Internal use only"""
 ####################################
 # Disactivate a Session ID entry   #
@@ -2922,7 +2998,7 @@ def _disactivate_session(snonce):
 # ignores mismatch                 #
 # returns nothing                  #
 ####################################
-    s = _get_session(snonce)
+    s = _get_session(shandle)
     if s:
         s.id_active = False
         _update_session(s)
@@ -2960,7 +3036,7 @@ def _ass_opt(x):
 ######################################
 # Assemble an option ready for CBOR
 ######################################
-    if tname(x) == "option":
+    if tname(x) == "_option":
         _opt = [x.otype]
         if x.otype == O_DIVERT:
             for y in x.embedded:
@@ -3022,7 +3098,7 @@ def _ass_message(msg_type, session_id, initiator, *whatever):
     #Convert to CBOR bytes
     msg_bytes = cbor.dumps(msg)
     ttprint("Assembled CBOR message:",msg_bytes)
-    return encrypt_msg(msg_bytes)
+    return _encrypt_msg(msg_bytes)
 
 
 def _detag_obj(x):
@@ -3081,8 +3157,8 @@ def _parse_diag(*e):
 #########################################
 # Print diagnostic for invalid syntax
 #########################################
-    global mess_check
-    if mess_check:
+    global _mess_check
+    if _mess_check:
         s=''
         for x in e:
             s += str(x)+' '
@@ -3130,7 +3206,7 @@ def _parse_opt(opt):
     elif not len(opt):
         _parse_diag("Option is empty")
         return None #zero length
-    o = option(opt[_Op_Opt])
+    o = _option(opt[_Op_Opt])
     if opt[_Op_Opt] == O_DIVERT:
         if len(opt) < _Op_Con+1 or \
           tname(opt[_Op_Con]) != 'list':
@@ -3208,7 +3284,7 @@ def _parse_msg(payload):
     elif not len(payload):
         _parse_diag("Message is empty")
         return None #zero length
-    m = message(payload[_Pl_Msg])
+    m = _message(payload[_Pl_Msg])
     if payload[_Pl_Msg] == M_NOOP:
         return m
     elif payload[_Pl_Msg] == M_DISCOVERY:
@@ -3279,7 +3355,7 @@ def _parse_msg(payload):
                         return None
                 else:
                     op = None
-                m.flood_list.append(flooded_objective(ob,op))
+                m.flood_list.append(_flooded_objective(ob,op))
                 pp += 1
             return m        
     elif payload[_Pl_Msg] in (M_REQ_NEG, M_NEGOTIATE, M_SYNCH, M_REQ_SYN):
@@ -3377,7 +3453,7 @@ def _try_mcsock(ifi):
     mcssock = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM) 
     mcssock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     mcssock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_MULTICAST_IF, struct.pack('@I', ifi))
-    if not listen_self:
+    if not _listen_self:
         #don't listen to yourself talking
         mcssock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_MULTICAST_LOOP, 0)
     mcssock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_MULTICAST_HOPS, 1)
@@ -3460,13 +3536,13 @@ class _mclisten(threading.Thread):
                 sport = send_addr[1]
                 ifn = send_addr[3]
                 ttprint("Received multicast",rawmsg,"from",saddr,"port",sport,"interface",ifn)
-                if listen_self or (not [ifn, saddr] in _ll_zone_ids):
+                if _listen_self or (not [ifn, saddr] in _ll_zone_ids):
 
                     #Because we listen to ourselves in testing
-                    #and because we can't trust IPV6_MULTICAST_LOOP = 0                    
-                        
+                    #and because we can't trust IPV6_MULTICAST_LOOP = 0
+                       
                     try:
-                        payload = cbor.loads(decrypt_msg(rawmsg))
+                        payload = cbor.loads(_decrypt_msg(rawmsg))
                     except:
                         ttprint("Multicast: CBOR decode error") #test mode to suppress QUADS warnings
                         continue
@@ -3520,10 +3596,10 @@ def _relay(payload, msg, ifi):
 # the throttle.                                    #
 ####################################################
 
-    r_snonce = _session_handle(msg.id_value, msg.id_source)
+    r_shandle = _session_handle(msg.id_value, msg.id_source)
     
     # drop message if this is a looping relay
-    sess = _get_session(r_snonce)
+    sess = _get_session(r_shandle)
     if sess:
         if sess.id_relayed:
             ttprint("Dropping a looping relayed multicast", msg.mtype)
@@ -3541,45 +3617,45 @@ def _relay(payload, msg, ifi):
         #ttprint("relaying", uobj[_Ob_Nam],"flood with loop ct", uobj[_Ob_LCt])
         if not sess:
             #insert session id for the relayed copies
-            news = _session_instance(r_snonce.id_value,True,r_snonce.id_source)
+            news = _session_instance(r_shandle.id_value,True,r_shandle.id_source)
             news.id_relayed = True
             _insert_session(news)
-        msg_bytes = encrypt_msg(cbor.dumps(payload))
+        msg_bytes = _encrypt_msg(cbor.dumps(payload))
         for i in range(len(_ll_zone_ids)):                
             ttprint("Flood relay for", uobj[_Ob_Nam])
             if _ll_zone_ids[i][0] != ifi: # will skip the relay source interface
                 _mcssocks[i][1].sendto(msg_bytes,0,(str(ALL_GRASP_NEIGHBORS_6), GRASP_LISTEN_PORT))
-        _disactivate_flood(r_snonce).start() #will disactivate session ID later
+        _disactivate_flood(r_shandle).start() #will disactivate session ID later
     elif msg.mtype == M_DISCOVERY:
         msg.obj.loop_count -=1 #decrement loop count
         if msg.obj.loop_count < 1:
             return #do nothing
         # reuse discover function in relay mode, but kick it off
         # as a separate thread with fresh copy of objective         
-        _disc_relay(r_snonce, _oclone(msg.obj), ifi).start()
+        _disc_relay(r_shandle, _oclone(msg.obj), ifi).start()
 
 
 class _disactivate_flood(threading.Thread):
     """Internal use only"""
-    def __init__(self, snonce):
+    def __init__(self, shandle):
         threading.Thread.__init__(self, daemon=True)
-        self.snonce = snonce
+        self.shandle = shandle
     def run(self):
         time.sleep(GRASP_DEF_TIMEOUT/500)
         ttprint("Disactivating flood session")
-        _disactivate_session(self.snonce)
+        _disactivate_session(self.shandle)
 
 class _disc_relay(threading.Thread):
     """Internal use only"""
-    def __init__(self, snonce, obj, ifi):
+    def __init__(self, shandle, obj, ifi):
         threading.Thread.__init__(self, daemon=True)
-        self.snonce = snonce
+        self.shandle = shandle
         self.obj = obj
         self.ifi = ifi
     def run(self):
         ttprint("Discovery relay for", self.obj.name, self.obj.loop_count)
         #set timeout to 1s per loop count 20170528
-        discover(None, self.obj, _discTimeoutUnit*self.obj.loop_count, relay_ifi=self.ifi, relay_snonce=self.snonce)
+        discover(None, self.obj, _discTimeoutUnit*self.obj.loop_count, relay_ifi=self.ifi, relay_shandle=self.shandle)
 
 def _init_drsocks(i):
     """Internal use only"""
@@ -3590,7 +3666,7 @@ def _init_drsocks(i):
 
     # Can't use a comprehension because we need the actual
     # list index in order select the correct socket.
-    _msg_bytes = encrypt_msg(cbor.dumps([M_NOOP])) #No-op message
+    _msg_bytes = _encrypt_msg(cbor.dumps([M_NOOP])) #No-op message
     for _ in range(10):
         try:
             _mcssocks[i][1].sendto(_msg_bytes,0,(str(ALL_GRASP_NEIGHBORS_6), GRASP_LISTEN_PORT))
@@ -3652,9 +3728,9 @@ class _drlisten(threading.Thread):
                 else:
                     a = aaddr[0]
                 send_addr=ipaddress.IPv6Address(a)
-                #ttprint("Received TCP", decrypt_msg(rawmsg), "from", send_addr)
+                #ttprint("Received TCP", _decrypt_msg(rawmsg), "from", send_addr)
                 try:
-                    payload = cbor.loads(decrypt_msg(rawmsg))
+                    payload = cbor.loads(_decrypt_msg(rawmsg))
                     ttprint("Received response: CBOR->Python:", payload)
                     msg = _parse_msg(payload)
                     if not msg:
@@ -3711,7 +3787,7 @@ class _mchandler(threading.Thread):
                 if (not test_mode) and (msg.mtype == M_DISCOVERY) and \
                    (msg.id_value == _i_sent_it):
                     # hack to ignore self-sent discoveries if multiple instances and
-                    # running with listen_self == True
+                    # running with _listen_self == True
                     ttprint("Dropping own discovery multicast")
 
                 elif DULL and not from_addr.is_link_local:
@@ -3727,8 +3803,8 @@ class _mchandler(threading.Thread):
                 elif msg.mtype == M_DISCOVERY:
                     ttprint("Got multicast Discovery msg")
                 
-                    if test_divert:
-                        ttprint("mchandler: test_divert",test_divert)
+                    if _test_divert:
+                        ttprint("mchandler: _test_divert",_test_divert)
 
                     #Is the objective registered in this node?
                     try:
@@ -3736,7 +3812,7 @@ class _mchandler(threading.Thread):
                         _found = False
                         _rapid = False
                         _normal = True
-                        if not test_divert:                        
+                        if not _test_divert:                        
                             _obj_lock.acquire()
                             for x in _obj_registry:
                                 if x.objective.name == oname and x.discoverable:
@@ -3800,7 +3876,7 @@ class _mchandler(threading.Thread):
                         elif not DULL:
                                                 
                             # Not local - do we have it in the cache?
-                            # We will come here too if test_divert is set
+                            # We will come here too if _test_divert is set
 
                             #ttprint("Search discovery cache")
                             
@@ -3834,7 +3910,7 @@ class _mchandler(threading.Thread):
                                             #build locator option (only supports IPv6, TCP)
                                             lo = [O_IPv6_LOCATOR, y.locator.packed, socket.IPPROTO_TCP, y.port]                                    
                                             divo.append(lo)
-                                            if test_divert:
+                                            if _test_divert:
                                                 break # to avoid duplicates during local testing
                                     elif y.is_fqdn:
                                         divo.append([O_FQDN_LOCATOR, y.locator, y.protocol, y.port])
@@ -3875,7 +3951,7 @@ class _mchandler(threading.Thread):
                 elif msg.mtype == M_FLOOD:
                     ttprint("Got Flood message")
 
-                    lobjs = msg.flood_list  #list of flooded_objective
+                    lobjs = msg.flood_list  #list of _flooded_objective
 
                     for lo in lobjs:
                         #construct asa_locator from locator option
@@ -3974,7 +4050,7 @@ class _tcp_listen(threading.Thread):
                 send_addr=ipaddress.IPv6Address(a)
                 #ttprint("Received TCP", rawmsg, "from", send_addr)
                 try:
-                    payload = cbor.loads(decrypt_msg(rawmsg))
+                    payload = cbor.loads(_decrypt_msg(rawmsg))
                     ttprint("Received request: CBOR->Python:", payload)
                     msg = _parse_msg(payload)
                     if not msg:
@@ -4046,7 +4122,7 @@ class _watcher(threading.Thread):
         global _my_address
         global _mc_restart
         global _said_no_route
-        global crypto
+        global _crypto
         time.sleep(1)
         tprint("ACP watcher is up; thread count:",threading.active_count())
         i=0
@@ -4091,24 +4167,21 @@ class _watcher(threading.Thread):
                 # flag MC handler to restart on timeout
                 _mc_restart = True
 
-def dump_all():
+def dump_all(partial=False):
     """
-    ####################################################
-    # dump_all() prints the various data structures   
-    #                                                 
-    # Intended only for interactive debugging         
-    # and not thread-safe                             
-    ####################################################
-    """
-    print("\nThread count:",threading.active_count(),"\n------------")
-    print("\nMy address:", str(_my_address),"\n----------")
-    print("\nSession locator:", str(_session_locator),"\n---------------")
-    print("\nLink local zone index(es):\n-------------------------")
-    for x in _ll_zone_ids:
-        print(x)
-    print("\nASA registry contents:\n---------------------")       
-    for x in _asa_registry:
-        print(x.name,"nonce:",x.nonce)
+Utility function dump_all() prints various GRASP data
+structures for interactive debugging. Not thread-safe.                             
+"""
+    if not partial:
+        print("\nThread count:",threading.active_count(),"\n------------")
+        print("\nMy address:", str(_my_address),"\n----------")
+        print("\nSession locator:", str(_session_locator),"\n---------------")
+        print("\nLink local zone index(es):\n-------------------------")
+        for x in _ll_zone_ids:
+            print(x)
+        print("\nASA registry contents:\n---------------------")       
+        for x in _asa_registry:
+            print(x.name,"handle:",x.handle)
     print("\nObjective registry contents:\n---------------------------")         
     for x in _obj_registry:
         o= x.objective
@@ -4116,25 +4189,27 @@ def dump_all():
                "Synch:",o.synch,"Count:",o.loop_count,"Value:",o.value)
         if x.locators:
             print("Predefined locators:", x.locators)
-    print("\nDiscovery cache contents:\n------------------------")
-    for x in _discovery_cache:
-        print(x.objective.name,"locators:")
-        for y in x.asa_locators:
-            print(y.locator, y.protocol, y.port, "Diverted:",y.diverted,"Expiry:",y.expire)
-        if x.received:
-            print("Received",x.received.name,"rapid value",x.received.value)
+    if not partial:
+        print("\nDiscovery cache contents:\n------------------------")
+        for x in _discovery_cache:
+            print(x.objective.name,"locators:")
+            for y in x.asa_locators:
+                print(y.locator, y.protocol, y.port, "Diverted:",y.diverted,"Expiry:",y.expire)
+            if x.received:
+                print("Received",x.received.name,"rapid value",x.received.value)
     print("\nFlood cache contents:\n--------------------")            
     for x in _flood_cache:
         print(x.objective.name,"count:",x.objective.loop_count,"value:", x.objective.value,
               "source:",x.source.locator, x.source.protocol, x.source.port, x.source.expire)
-    print("\nSession ID cache contents:\n-------------------------")         
-    for x in _session_id_cache:
-        print("Nonce:",'{:8}'.format(x.id_value),"Source:",x.id_source,"Active:",x.id_active,
-              "Relayed:",x.id_relayed)
+    if not partial:
+        print("\nSession ID cache contents:\n-------------------------")         
+        for x in _session_id_cache:
+            print("Handle:",'{:8}'.format(x.id_value),"Source:",x.id_source,"Active:",x.id_active,
+                  "Relayed:",x.id_relayed)
 
 def _security_check():
     """Internal use only """
-    global _secure, crypto, _tls_required, DULL
+    global _secure, _crypto, _tls_required, DULL
     
     ####################################
     # Is there a secure ACP or QUADS?                 #
@@ -4146,7 +4221,7 @@ def _security_check():
         _secure = False  #Make sure of it!
         ttprint("WARNING: Insecure Discovery Unsolicited Link-Local (DULL) mode")
     else:
-        _secure = astat or crypto
+        _secure = astat or _crypto
         _tls_required = not _secure
         if _tls_required:
             #should be code to cause TLS wrapping of TCP...
@@ -4181,7 +4256,7 @@ def _initialise_grasp():
     global _flood_lock
     global _print_lock
     global _tls_required
-    global crypto
+    global _crypto
     global _secure
     global DULL
     global _rapid_supported
@@ -4198,9 +4273,9 @@ def _initialise_grasp():
     global _i_sent_it
     global _skip_dialogue
     global test_mode
-    global mess_check
-    global listen_self
-    global test_divert
+    global _mess_check
+    global _listen_self
+    global _test_divert
     global _make_invalid
     global _make_badmess
     global _dobubbles    
@@ -4244,13 +4319,13 @@ def _initialise_grasp():
         # Strict checking ?                # 
         ####################################
 
-        mess_check = False         # Set this True for detailed format
+        _mess_check = False         # Set this True for detailed format
                                    # diagnostics for incoming messages
         try:
             _l = input("Diagnostics for inbound message parse errors? Y/N:")
             if _l:
                 if _l[0] == "Y" or _l[0] == "y":
-                    mess_check = True
+                    _mess_check = True
         except:
             pass
 
@@ -4258,13 +4333,13 @@ def _initialise_grasp():
         # Listen to own LL multicasts?     # 
         ####################################
 
-        listen_self = False
+        _listen_self = False
 
         try:
             _l = input("Listen to own multicasts? Y/N:")
             if _l:
                 if _l[0] == "Y" or _l[0] == "y":
-                    listen_self = True
+                    _listen_self = True
                     #ttprint("WARNING: Will listen to own LL multicasts")
         except:
             pass
@@ -4290,7 +4365,7 @@ def _initialise_grasp():
         if not DULL:
             try:
                 import quadsk
-                _ini_crypt(_key=quadsk.key,_iv=quadsk.iv)
+                _ini_crypt(key=quadsk.key,iv=quadsk.iv)
             except:
                 _ini_crypt() #No cryptography keys installed
         
@@ -4339,7 +4414,7 @@ def _initialise_grasp():
     _mcssocks = []             # Empty list of multicast sending sockets
                                # Each entry is [Zone Index, socket]
 
-    test_divert = False        # Flip this only inside test ASA, with care
+    _test_divert = False        # Flip this only inside test ASA, with care
     _make_invalid = False      # For testing M_INVALID, with care
     _make_badmess = False      # For testing bad message format, with care
 
@@ -4351,7 +4426,7 @@ def _initialise_grasp():
 
     if DULL:
         tprint("Security status: DULL mode")
-    elif crypto:
+    elif _crypto:
         tprint("Security status: QUADS active")
     elif _secure:
         tprint("Security status: ACP secure")
@@ -4458,11 +4533,11 @@ def _initialise_grasp():
 
 _print_lock = threading.Lock() # printing might be needed before init!
 test_mode = False              # referenced by skip_dialogue(), used by printing
-listen_self = False            # referenced by skip_dialogue()
+_listen_self = False           # referenced by skip_dialogue()
 DULL = False                   # referenced by skip_dialogue()
 _skip_dialogue = False         # referenced by skip_dialogue()
 _dobubbles = False             # Don't bubble print by default
-bubbleQ = queue.Queue(100)     # Will be used if bubble printing
+_bubbleQ = queue.Queue(100)    # Will be used if bubble printing
 
 #------------------------------------------------------------
 # The following are the GIF images used for the bubble printing
