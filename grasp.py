@@ -74,7 +74,7 @@
 ########################################################
 ########################################################"""
 
-_version = "15-BC-20210115"
+_version = "15-BC-20210118"
 
 ##########################################################
 # The following change log records significant changes,
@@ -202,6 +202,8 @@ _version = "15-BC-20210115"
 # 20200112 - cosmetic improvements
 
 # 20200115 - added partial option to dump_all()
+
+# 20210118 - tweak to allow "No key" bypass
 
 
 ##########################################################
@@ -825,6 +827,10 @@ def _ini_crypt(key=None, iv=None):
         _key = kdf.derive(password)
         _skip = _key[0]%10
         _iv =  _key[_skip:_skip+16]
+
+    elif key == "No key":
+        print("No encryption key: GRASP is insecure.")
+        return
 
     else:
         #use configured keys
