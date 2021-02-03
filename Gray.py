@@ -1,28 +1,50 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import graspi
-import threading
 import time
+try:
+    import graspi
+except:
+    print("Updated code: You need the graspi.py module.")
+    time.sleep(10)
+    exit()
+import threading
 import cbor
 import random
 
-graspi.tprint("========================")
-graspi.tprint("ASA Gray is starting up.")
-graspi.tprint("========================")
-graspi.tprint("Gray is a demonstration Autonomic Service Agent.")
-graspi.tprint("It tests out several basic features of GRASP, and")
-graspi.tprint("then runs indefinitely as one side of a negotiation.")
-graspi.tprint("It acts as a client, asking for money.")
-graspi.tprint("The sum requested is random for each negotiation,")
-graspi.tprint("and some GRASP features are used at random.")
-graspi.tprint("On Windows or Linux, there should be a nice window")
-graspi.tprint("that displays the negotiation process.")
-graspi.tprint("========================")
+###################################
+# Print obj_registry and flood cache
+###################################
 
-time.sleep(8) # so the user can read the text
+def dump_some():
+    graspi.dump_all(partial=True)
+    time.sleep(5)
+
+######################
+# Main code starts
+######################
+
+try:
+    graspi.checkrun
+except:
+    #not running under ASA loader
+    graspi.tprint("========================")
+    graspi.tprint("ASA Gray is starting up.")
+    graspi.tprint("========================")
+    graspi.tprint("Gray is a demonstration Autonomic Service Agent.")
+    graspi.tprint("It tests out several basic features of GRASP, and")
+    graspi.tprint("then runs indefinitely as one side of a negotiation.")
+    graspi.tprint("It acts as a client, asking for money.")
+    graspi.tprint("The sum requested is random for each negotiation,")
+    graspi.tprint("and some GRASP features are used at random.")
+    graspi.tprint("On Windows or Linux, there should be a nice window")
+    graspi.tprint("that displays the negotiation process.")
+    graspi.tprint("========================")
+
+    time.sleep(8) # so the user can read the text
 
 _prng = random.SystemRandom() # best PRNG we can get
+keep_going = True
 
 ####################################
 # Register ASA/objectives
@@ -32,7 +54,8 @@ err, asa_nonce = graspi.register_asa("Gray")
 if not err:
     graspi.tprint("ASA Gray registered OK")
 else:
-    exit()
+    graspi.tprint("Cannot register ASA:", graspi.etext[err])
+    keep_going = False
 
 #This objective is for the flooding test
 #so doesn't need to be registered
@@ -50,11 +73,12 @@ obj2.synch = True
 obj3 = graspi.objective("EX3")
 obj3.neg = True
 
-err = graspi.register_obj(asa_nonce,obj3)
+err = graspi.register_obj(asa_nonce,obj3,overlap=True)
 if not err:
     graspi.tprint("Objective EX3 registered OK")
 else:
-    exit()
+    graspi.tprint("Cannot register objective:", graspi.etext[err])
+    keep_going = False
     
 ###################################
 # Try synchronizes
@@ -62,63 +86,59 @@ else:
 
 time.sleep(5)
 
-graspi.tprint("Synchronization tests will start; some may fail.")
+if keep_going:
 
-err, result = graspi.synchronize(asa_nonce, obj1, None, 5000)
-if not err:
-    graspi.tprint("Synchronized EX1", result.value)
-else:
-    graspi.tprint("Synch failed EX1", graspi.etext[err])
+    graspi.tprint("Synchronization tests will start; some may fail.")
 
-err, result = graspi.synchronize(asa_nonce, obj2, None, 5000)
-if not err:
-    graspi.tprint("Synchronized EX2", result.value)
-else:
-    graspi.tprint("Synch failed EX2", graspi.etext[err])    
+    err, result = graspi.synchronize(asa_nonce, obj1, None, 5000)
+    if not err:
+        graspi.tprint("Synchronized EX1", result.value)
+    else:
+        graspi.tprint("Synch failed EX1", graspi.etext[err])
 
-  
-#This should fail as test_obj was neither flooded or listened for.
-test_obj = graspi.objective("Nonsense")
-err, result = graspi.synchronize(asa_nonce, test_obj, None, 5000)
-if not err:
-    graspi.tprint("Synchronized Nonsense (should fail)", result.value)
-else:
-    graspi.tprint("Synch failed Nonsense (should fail)", graspi.etext[err])
+    err, result = graspi.synchronize(asa_nonce, obj2, None, 5000)
+    if not err:
+        graspi.tprint("Synchronized EX2", result.value)
+    else:
+        graspi.tprint("Synch failed EX2", graspi.etext[err])    
 
-#repeat
-err, result = graspi.synchronize(asa_nonce, obj2, None, 5000)
-if not err:
-    graspi.tprint("Synchronized EX2", result.value)
-else:
-    graspi.tprint("Synch failed EX2", graspi.etext[err])  
-    
-err, result = graspi.synchronize(asa_nonce, obj1, None, 5000)
-if not err:
-    graspi.tprint("Synchronized EX1", result.value)
-else:
-    graspi.tprint("Synch failed EX1", graspi.etext[err])
+      
+    #This should fail as test_obj was neither flooded or listened for.
+    test_obj = graspi.objective("Nonsense")
+    err, result = graspi.synchronize(asa_nonce, test_obj, None, 5000)
+    if not err:
+        graspi.tprint("Synchronized Nonsense (should fail)", result.value)
+    else:
+        graspi.tprint("Synch failed Nonsense (should fail)", graspi.etext[err])
 
-           
-###################################
-# Print obj_registry and flood cache
-###################################
+    #repeat
+    err, result = graspi.synchronize(asa_nonce, obj2, None, 5000)
+    if not err:
+        graspi.tprint("Synchronized EX2", result.value)
+    else:
+        graspi.tprint("Synch failed EX2", graspi.etext[err])  
+        
+    err, result = graspi.synchronize(asa_nonce, obj1, None, 5000)
+    if not err:
+        graspi.tprint("Synchronized EX1", result.value)
+    else:
+        graspi.tprint("Synch failed EX1", graspi.etext[err])
 
-def dump_some():
-    graspi.dump_all(partial=True)
-    time.sleep(5)
+    dump_some()       
 
-dump_some()
 
-###################################
-# Negotiate EX3 as initiator for ever
-###################################
+    ###################################
+    # Negotiate EX3 as initiator for ever
+    ###################################
 
-graspi.tprint("Ready to negotiate EX3 as requester")
-graspi.ttprint("(Note: Cyrillic test case fails in a Windows console window, OK in IDLE window.)")
-failct = 0
-graspi.init_bubble_text("Gray")
 
-while True:
+
+    graspi.tprint("Ready to negotiate EX3 as requester")
+    graspi.ttprint("(Note: Cyrillic test case fails in a Windows console window, OK in IDLE window.)")
+    failct = 0
+    graspi.init_bubble_text("Gray")
+
+while keep_going:
     #start of a negotiating session
     iwant = _prng.randint(10, 500) # random requested value
     limit = int(0.7*iwant)
@@ -251,6 +271,7 @@ while True:
         graspi.tprint("Negotiation succeeded", answer.value)
  
     #end of a negotiating session
+    
     time.sleep(5) #to keep things calm...
     if graspi.grasp.test_mode:
         dump_some()
@@ -266,4 +287,13 @@ while True:
         for x in results:
             graspi.tprint("Flooded EX1 from", x.source.locator, "=", x.objective.value)
     else:
-        graspi.tprint("get_flood failed EX1", graspi.etext[err])    
+        graspi.tprint("get_flood failed EX1", graspi.etext[err])
+    try:   
+        if not graspi.checkrun(asa_nonce, "Gray"):
+            keep_going = False
+    except:
+        #not running under ASA loader
+        pass
+        
+graspi.deregister_asa(asa_nonce, "Gray")
+graspi.tprint("ASA exiting")

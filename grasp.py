@@ -3,7 +3,7 @@
 #                                                     
 # Generic Autonomic Signaling Protocol (GRASP)        
 #                                                     
-# GRASP engine and experimantal API                             
+# GRASP engine and experimental API                             
 #                                                     
 # Module name is 'grasp'
 #                                                     
@@ -74,7 +74,7 @@
 ########################################################
 ########################################################"""
 
-_version = "15-BC-20210118"
+_version = "15-BC-20210201"
 
 ##########################################################
 # The following change log records significant changes,
@@ -560,6 +560,7 @@ _skip_dialogue = False     #true if ASA calls grasp.skip_dialogue
 # _relay_needed       #True if multiple interfaces require Discovery/Flood relaying
 # _mc_restart         #True if system wakeup detected - multicast listeners must restart
 # _i_sent_it          #session ID of most recent discovery multicast, used in a hack
+# _multi_asas         #flag used by ASA loader
 # test_mode           #True iff module is running in test mode
 # _listen_self        #True iff listening to own LL multicasts for testing
 # _test_divert        #True to force a divert message from discovery
@@ -1941,8 +1942,8 @@ def listen_negotiate(asa_handle, obj):
     #cache remote session along with socket
     news = _session_instance(s_id,True,s_source.packed)
     news.id_sock=rq[0]
-    if _insert_session(news, _check_race = not test_mode):
-        #(we bypass the race condition check iff in test mode)
+    if _insert_session(news, _check_race = not (test_mode or _multi_asas)):
+        #(we bypass the race condition check iff in test mode or multi ASA mode)
         #return proffered objective to caller
         prof_obj = rq[2].obj
         if prof_obj.dry:
@@ -2784,11 +2785,14 @@ def init_bubble_text(cap):
 
             #Exiting
             tprint("Bubbles over")
-            _dobubbles = False
+            ##_dobubbles = False ##That was a bug, must never restart bubbles!
                 
     #--------------
     # constants and global vars
     global _dobubbles, _bubblim, _myfont, _wrap_at
+
+    if _dobubbles:
+        return  #can only start tkinter once
             
     WIDTH = 500
     HEIGHT = 500
@@ -3781,6 +3785,7 @@ class _mchandler(threading.Thread):
 
     def run(self):
         global _i_sent_it
+        global _multi_asas
         tprint("Multicast queue handler up")
         while True:
             try:      #this is to catch unknown bug 20190724
@@ -3791,7 +3796,7 @@ class _mchandler(threading.Thread):
                 from_ifi = mc[2]
                 msg = mc[3]
                 if (not test_mode) and (msg.mtype == M_DISCOVERY) and \
-                   (msg.id_value == _i_sent_it):
+                   (msg.id_value == _i_sent_it) and not _multi_asas:
                     # hack to ignore self-sent discoveries if multiple instances and
                     # running with _listen_self == True
                     ttprint("Dropping own discovery multicast")
@@ -4277,6 +4282,7 @@ def _initialise_grasp():
     global _relay_needed
     global _mc_restart
     global _i_sent_it
+    global _multi_asas
     global _skip_dialogue
     global test_mode
     global _mess_check
@@ -4389,6 +4395,7 @@ def _initialise_grasp():
     _tls_required = True        # Assume no ACP for now
     _rapid_supported = False    # Default, can only be changed by Intent
     _i_sent_it = 0              # Initialise hack to detect own discoveries
+    _multi_asas = False         # Initialise multiple ASA status
     
     _mcq = queue.Queue(_multQlimit) # Limits number of queued multicasts
 

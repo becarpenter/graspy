@@ -1,71 +1,17 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import graspi
-import threading
 import time
+try:
+    import graspi
+except:
+    print("Updated code: You need the graspi.py module.")
+    time.sleep(10)
+    exit()               
+import threading
 import datetime
 import cbor
 import random
-
-graspi.tprint("==========================")
-graspi.tprint("ASA Briggs is starting up.")
-graspi.tprint("==========================")
-graspi.tprint("Briggs is a demonstration Autonomic Service Agent.")
-graspi.tprint("It tests out several basic features of GRASP, and")
-graspi.tprint("then runs indefinitely as one side of a negotiation.")
-graspi.tprint("It acts as the banker, giving out money, and can")
-graspi.tprint("handle multiple overlapping negotiations.")
-graspi.tprint("The sum available is random for each negotiation,")
-graspi.tprint("and the negotiation timeout is changed at random.")
-graspi.tprint("On Windows or Linux, there should be a nice window")
-graspi.tprint("that displays the negotiation process.")
-graspi.tprint("==========================")
-
-
-time.sleep(8) # so the user can read the text
-_prng = random.SystemRandom() # best PRNG we can get
-
-####################################
-# Register ASA/objectives
-####################################
-
-err,asa_nonce = graspi.register_asa("Briggs")
-if not err:
-    graspi.tprint("ASA Briggs registered OK")
-
-else:
-    exit()
-    
-obj1 = graspi.objective("EX1")
-obj1.loop_count = 4
-obj1.synch = True
-
-err = graspi.register_obj(asa_nonce,obj1)
-if not err:
-    graspi.tprint("Objective EX1 registered OK")
-else:
-    exit()
-
-obj2 = graspi.objective("EX2")
-obj2.loop_count = 4
-obj2.synch = True
-
-err = graspi.register_obj(asa_nonce,obj2,rapid=True)
-if not err:
-    graspi.tprint("Objective EX2 registered OK")
-else:
-    exit()
-
-obj3 = graspi.objective("EX3")
-obj3.neg = True
-obj3.dry = True
-
-err = graspi.register_obj(asa_nonce,obj3)
-if not err:
-    graspi.tprint("Objective EX3 registered OK")
-else:
-    exit()
 
 ####################################
 # Flood EX1 repeatedly
@@ -73,11 +19,12 @@ else:
 
 class flooder(threading.Thread):
     """Thread to flood EX1 repeatedly"""
+    global keep_going
     def __init__(self):
-        threading.Thread.__init__(self)
+        threading.Thread.__init__(self, daemon=True)
 
     def run(self):
-        while True:
+        while keep_going:
             time.sleep(60)
             obj1.value = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC from Briggs")
             err = graspi.flood(asa_nonce, 59000, [graspi.tagged_objective(obj1,None)])
@@ -86,17 +33,7 @@ class flooder(threading.Thread):
             time.sleep(5)
             if graspi.grasp.test_mode:
                 dump_some()
-
-flooder().start()
-graspi.tprint("Flooding EX1 for ever")
-
-###################################
-# Listen Synchronize EX2
-###################################
-
-obj2.value = [1,"two",3]
-err = graspi.listen_synchronize(asa_nonce, obj2)
-graspi.tprint("Listening for synch requests for EX2", graspi.etext[err])
+        graspi.tprint("Flooder exiting")
 
 
 ###################################
@@ -107,7 +44,6 @@ def dump_some():
     graspi.dump_all(partial=True)
     time.sleep(5)
 
-dump_some()
 
 ####################################
 # Support function for negotiator
@@ -125,8 +61,9 @@ def endit(snonce, r):
 
 class negotiator(threading.Thread):
     """Thread to negotiate obj3 as master"""
+    global keep_going, _prng, reserves, asa_nonce
     def __init__(self, snonce, nobj):
-        threading.Thread.__init__(self)
+        threading.Thread.__init__(self, daemon=True)
         self.snonce = snonce
         self.nobj = nobj
 
@@ -217,6 +154,92 @@ class negotiator(threading.Thread):
                 graspi.tprint("end_negotiate error:",graspi.etext[err])
         #end of a negotiating session
 
+######################
+# Main code starts
+######################                
+
+global keep_going, _prng, reserves, asa_nonce
+
+try:
+    graspi.checkrun
+except:
+    #not running under ASA loader
+    graspi.tprint("==========================")
+    graspi.tprint("ASA Briggs is starting up.")
+    graspi.tprint("==========================")
+    graspi.tprint("Briggs is a demonstration Autonomic Service Agent.")
+    graspi.tprint("It tests out several basic features of GRASP, and")
+    graspi.tprint("then runs indefinitely as one side of a negotiation.")
+    graspi.tprint("It acts as the banker, giving out money, and can")
+    graspi.tprint("handle multiple overlapping negotiations.")
+    graspi.tprint("The sum available is random for each negotiation,")
+    graspi.tprint("and the negotiation timeout is changed at random.")
+    graspi.tprint("On Windows or Linux, there should be a nice window")
+    graspi.tprint("that displays the negotiation process.")
+    graspi.tprint("==========================")
+
+    time.sleep(8) # so the user can read the text
+    
+_prng = random.SystemRandom() # best PRNG we can get
+keep_going = True
+
+####################################
+# Register ASA/objectives
+####################################
+
+err,asa_nonce = graspi.register_asa("Briggs")
+if not err:
+    graspi.tprint("ASA Briggs registered OK")
+else:
+    graspi.tprint("Cannot register ASA:", graspi.etext[err])
+    keep_going = False
+    
+obj1 = graspi.objective("EX1")
+obj1.loop_count = 4
+obj1.synch = True
+
+err = graspi.register_obj(asa_nonce,obj1)
+if not err:
+    graspi.tprint("Objective EX1 registered OK")
+else:
+    graspi.tprint("Cannot register objective:", graspi.etext[err])
+    keep_going = False
+
+obj2 = graspi.objective("EX2")
+obj2.loop_count = 4
+obj2.synch = True
+
+err = graspi.register_obj(asa_nonce,obj2,rapid=True)
+if not err:
+    graspi.tprint("Objective EX2 registered OK")   
+else:
+    graspi.tprint("Cannot register objective:", graspi.etext[err])
+    keep_going = False
+
+obj3 = graspi.objective("EX3")
+obj3.neg = True
+obj3.dry = True
+
+err = graspi.register_obj(asa_nonce,obj3,overlap=True)
+if not err:
+    graspi.tprint("Objective EX3 registered OK") 
+else:
+    graspi.tprint("Cannot register objective:", graspi.etext[err])
+    keep_going = False
+
+dump_some()
+
+flooder().start()
+graspi.tprint("Flooding EX1 for ever")
+
+###################################
+# Listen Synchronize EX2
+###################################
+
+obj2.value = [1,"two",3]
+err = graspi.listen_synchronize(asa_nonce, obj2)
+graspi.tprint("Listening for synch requests for EX2", graspi.etext[err])
+
 
 ###################################
 # Negotiate EX3 as listener for ever
@@ -228,13 +251,15 @@ graspi.ttprint("(Note: Cyrillic test case fails in a Windows console window, OK 
 
 graspi.init_bubble_text("Briggs")
 
-while True:
+while keep_going:
     #start of a negotiating session
 
     #create a random amount of resource and a random waiting time
     reserves = _prng.randint(100, 400)
     wt = _prng.randint(9000, 20000)
     graspi.tprint("Reserves: $",reserves, "Wait:",wt,"ms")
+    ##if not reserves%7:
+    ##    0/0 #random crash for testing
     
     #attempt to listen for negotiation
     err, snonce, answer = graspi.listen_negotiate(asa_nonce, obj3)
@@ -245,4 +270,13 @@ while True:
         #got a new negotiation request; kick off a separate negotiator
         #so that multiple requests can be handled in parallel
         negotiator(snonce, answer).start()
+    try:
+        if not graspi.checkrun(asa_nonce, "Briggs"):
+            keep_going = False
+    except:
+        #not running under ASA loader
+        pass
+graspi.deregister_asa(asa_nonce, "Briggs")
+graspi.tprint("ASA exiting")
+
 

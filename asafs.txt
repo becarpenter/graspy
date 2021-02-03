@@ -1,0 +1,7 @@
+#This is an example control file for the ASA_loader
+Briggs
+Gray
+# the following line is for test purposes
+rubbish
+
+
