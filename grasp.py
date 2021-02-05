@@ -809,7 +809,6 @@ _cipher = None
 def _ini_crypt(key=None, iv=None):
     """Internal use only; gets passsword and enables crypto"""
     global _crypto, _key, _iv, _qsalt, _cipher, _cryptography
-    tprint("Flag",_cryptography)
     if not _cryptography:
         tprint("Could not import cryptography: GRASP is insecure.")
         return
