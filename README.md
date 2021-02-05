@@ -8,6 +8,11 @@ This code IS NOT INTENDED FOR PRODUCTION USE. See the license and disclaimers in
 Overview: see GRASP-intro.pdf
 Doc: see graspy.pdf
 
+Status on 2021-02-05
+
+Added experimental ASA_loader.py, a proof-of-concept ASA ecosystem. Updated Briggs & Gray accordingly.
+(Briggs_old and Gray_old still use the old API.)
+
 Status on 2021-01-15
 
 Added missing API features and added graspi.py as a wrapper that conforms to the approved official API. Some of the demos (graspitests, Briggs, Gray) have been updated to use the official API. Others will be updated as time permits.
