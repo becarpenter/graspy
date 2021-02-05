@@ -74,7 +74,7 @@
 ########################################################
 ########################################################"""
 
-_version = "15-BC-20210201"
+_version = "15-BC-20210205"
 
 ##########################################################
 # The following change log records significant changes,
@@ -188,22 +188,24 @@ _version = "15-BC-20210201"
 
 # 20210106 - added overlap parameter to register_obj
 
-# 20200109 - added minimum_TTL parameter to discover
+# 20210109 - added minimum_TTL parameter to discover
 #          - documented remaining deviations from API RFC
 
-# 20200110 - renamed snonce as shandle throughout
+# 20210110 - renamed snonce as shandle throughout
 #          - cleaned up naming of some globals, classes and functions
 #            to tidy up the 'help' results
 
-# 20200111 - cleaned up help texts
+# 20210111 - cleaned up help texts
 #          - did all remaining s/nonce/handle/
 #          - made flood() RFC-compatible
 
-# 20200112 - cosmetic improvements
+# 20210112 - cosmetic improvements
 
-# 20200115 - added partial option to dump_all()
+# 20210115 - added partial option to dump_all()
 
 # 20210118 - tweak to allow "No key" bypass
+
+# 20210205 - graceful behaviour if import cryptography fails
 
 
 ##########################################################
@@ -274,11 +276,16 @@ except:
 #imports for QUADS
 import os
 import getpass
-from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives import padding
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+_cryptography = False
+try:
+    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+    from cryptography.hazmat.backends import default_backend
+    from cryptography.hazmat.primitives import padding
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+    _cryptography = True
+except:
+    pass
 
 #check for latest ACP
 try:
@@ -801,8 +808,12 @@ _cipher = None
 
 def _ini_crypt(key=None, iv=None):
     """Internal use only; gets passsword and enables crypto"""
-    global _crypto, _key, _iv, _qsalt, _cipher
-    if not key:
+    global _crypto, _key, _iv, _qsalt, _cipher, _cryptography
+    tprint("Flag",_cryptography)
+    if not _cryptography:
+        tprint("Could not import cryptography: GRASP is insecure.")
+        return
+    elif not key:
         password = None
         confirm = 1
         print("Please enter the keying password for the domain.")
@@ -830,7 +841,7 @@ def _ini_crypt(key=None, iv=None):
         _iv =  _key[_skip:_skip+16]
 
     elif key == "No key":
-        print("No encryption key: GRASP is insecure.")
+        tprint("No encryption key: GRASP is insecure.")
         return
 
     else:
