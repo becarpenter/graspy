@@ -2,12 +2,19 @@
 # -*- coding: utf-8 -*-
 
 import time
+_old_API = False
 try:
     import graspi
 except:
-    print("Updated code: You need the graspi.py module.")
-    time.sleep(10)
-    exit()               
+    print("Cannot find the RFC API module graspi.py.")
+    print("Will run with only the basic grasp.py module.")
+    _old_API = True
+    try:
+        import grasp as graspi
+    except:
+        print("Cannot import grasp.py")
+        time.sleep(10)
+        exit()
 import threading
 import datetime
 import cbor
@@ -27,12 +34,16 @@ class flooder(threading.Thread):
         while keep_going:
             time.sleep(60)
             obj1.value = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC from Briggs")
-            err = graspi.flood(asa_nonce, 59000, [graspi.tagged_objective(obj1,None)])
+            err = graspi.flood(asa_handle, 59000, [graspi.tagged_objective(obj1,None)])
             if err:
                 graspi.tprint("Flood failure:",graspi.etext[err])
             time.sleep(5)
-            if graspi.grasp.test_mode:
-                dump_some()
+            if _old_API:
+                if graspi.test_mode:
+                    dump_some()
+            else:
+                if graspi.grasp.test_mode:
+                    dump_some()
         graspi.tprint("Flooder exiting")
 
 
@@ -49,9 +60,9 @@ def dump_some():
 # Support function for negotiator
 ####################################
 
-def endit(snonce, r):
+def endit(shandle, r):
     graspi.tprint("Failed", r)
-    err = graspi.end_negotiate(asa_nonce, snonce, False, reason=r)
+    err = graspi.end_negotiate(asa_handle, shandle, False, reason=r)
     if err:
         graspi.tprint("end_negotiate error:",graspi.etext[err])
 
@@ -61,15 +72,15 @@ def endit(snonce, r):
 
 class negotiator(threading.Thread):
     """Thread to negotiate obj3 as master"""
-    global keep_going, _prng, reserves, asa_nonce
-    def __init__(self, snonce, nobj):
+    global keep_going, _prng, reserves, asa_handle
+    def __init__(self, shandle, nobj):
         threading.Thread.__init__(self, daemon=True)
-        self.snonce = snonce
+        self.shandle = shandle
         self.nobj = nobj
 
     def run(self):
         answer=self.nobj
-        snonce=self.snonce
+        shandle=self.shandle
         
         try:
             answer.value=cbor.loads(answer.value)
@@ -85,7 +96,7 @@ class negotiator(threading.Thread):
         reason=None       
         
         if answer.value[0]!="NZD":
-            endit(snonce, "Invalid currency")
+            endit(shandle, "Invalid currency")
         elif answer.value[1] > reserves/2:
             #other end wants too much, we need to negotiate
             proffer = int(reserves/2)
@@ -98,7 +109,12 @@ class negotiator(threading.Thread):
                 answer.value[1] = proffer
                 if _cbor:
                     answer.value=cbor.dumps(answer.value)
-                err,temp,answer,reason = graspi.negotiate_step(asa_nonce, snonce, answer, 1000)
+                _r = graspi.negotiate_step(asa_handle, shandle, answer, 1000)
+                if _old_API:
+                    err,temp,answer = _r
+                    reason = answer
+                else:
+                    err,temp,answer,reason = _r
                 graspi.ttprint("Step", step, "gave:", err, temp, answer,reason)
                 step += 1
                 if (not err) and temp==None:
@@ -113,7 +129,7 @@ class negotiator(threading.Thread):
                     graspi.tprint("Loop count", answer.loop_count,"request",answer.value[1])
                     #maybe wait (for no particular reason)
                     if _prng.randint(1,10)%2:                        
-                        err1 = graspi.negotiate_wait(asa_nonce, snonce, wt)
+                        err1 = graspi.negotiate_wait(asa_handle, shandle, wt)
                         graspi.tprint("Tried wait:", graspi.etext[err1])
                         time.sleep(10) # if wt<10000 this tests anomaly handling by the peer
                         graspi.tprint("Woke up")
@@ -129,7 +145,7 @@ class negotiator(threading.Thread):
                             reason="Insufficient funds"
                         else:
                             reason=u"Недостаточно средств"
-                        endit(snonce, reason)
+                        endit(shandle, reason)
                         concluded = True
                 else:    
                     #other end rejected or loop count exhausted
@@ -138,7 +154,7 @@ class negotiator(threading.Thread):
                     
                     if err==graspi.errors.loopExhausted:
                         # we need to signal the end
-                        endit(snonce, graspi.etext[err])
+                        endit(shandle, graspi.etext[err])
                     elif err==graspi.errors.declined and reason!="":
                         graspi.tprint("Declined:",reason)
                     else:
@@ -149,7 +165,7 @@ class negotiator(threading.Thread):
             #out of negotiation loop
         else: #we can accept the initially requested value
             graspi.tprint("Request accepted")
-            err = graspi.end_negotiate(asa_nonce, snonce, True)
+            err = graspi.end_negotiate(asa_handle, shandle, True)
             if err:
                 graspi.tprint("end_negotiate error:",graspi.etext[err])
         #end of a negotiating session
@@ -158,7 +174,7 @@ class negotiator(threading.Thread):
 # Main code starts
 ######################                
 
-global keep_going, _prng, reserves, asa_nonce
+global keep_going, _prng, reserves, asa_handle
 
 try:
     graspi.checkrun
@@ -187,7 +203,7 @@ keep_going = True
 # Register ASA/objectives
 ####################################
 
-err,asa_nonce = graspi.register_asa("Briggs")
+err,asa_handle = graspi.register_asa("Briggs")
 if not err:
     graspi.tprint("ASA Briggs registered OK")
 else:
@@ -198,7 +214,7 @@ obj1 = graspi.objective("EX1")
 obj1.loop_count = 4
 obj1.synch = True
 
-err = graspi.register_obj(asa_nonce,obj1)
+err = graspi.register_obj(asa_handle,obj1)
 if not err:
     graspi.tprint("Objective EX1 registered OK")
 else:
@@ -209,7 +225,7 @@ obj2 = graspi.objective("EX2")
 obj2.loop_count = 4
 obj2.synch = True
 
-err = graspi.register_obj(asa_nonce,obj2,rapid=True)
+err = graspi.register_obj(asa_handle,obj2,rapid=True)
 if not err:
     graspi.tprint("Objective EX2 registered OK")   
 else:
@@ -220,7 +236,7 @@ obj3 = graspi.objective("EX3")
 obj3.neg = True
 obj3.dry = True
 
-err = graspi.register_obj(asa_nonce,obj3,overlap=True)
+err = graspi.register_obj(asa_handle,obj3,overlap=True)
 if not err:
     graspi.tprint("Objective EX3 registered OK") 
 else:
@@ -237,7 +253,7 @@ graspi.tprint("Flooding EX1 for ever")
 ###################################
 
 obj2.value = [1,"two",3]
-err = graspi.listen_synchronize(asa_nonce, obj2)
+err = graspi.listen_synchronize(asa_handle, obj2)
 graspi.tprint("Listening for synch requests for EX2", graspi.etext[err])
 
 
@@ -262,21 +278,21 @@ while keep_going:
     ##    0/0 #random crash for testing
     
     #attempt to listen for negotiation
-    err, snonce, answer = graspi.listen_negotiate(asa_nonce, obj3)
+    err, shandle, answer = graspi.listen_negotiate(asa_handle, obj3)
     if err:
         graspi.tprint("listen_negotiate error:",graspi.etext[err])
         time.sleep(5) #to calm things if there's a looping error
     else:
         #got a new negotiation request; kick off a separate negotiator
         #so that multiple requests can be handled in parallel
-        negotiator(snonce, answer).start()
+        negotiator(shandle, answer).start()
     try:
-        if not graspi.checkrun(asa_nonce, "Briggs"):
+        if not graspi.checkrun(asa_handle, "Briggs"):
             keep_going = False
     except:
         #not running under ASA loader
         pass
-graspi.deregister_asa(asa_nonce, "Briggs")
+graspi.deregister_asa(asa_handle, "Briggs")
 graspi.tprint("ASA exiting")
 
 

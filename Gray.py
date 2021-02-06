@@ -2,12 +2,19 @@
 # -*- coding: utf-8 -*-
 
 import time
+_old_API = False
 try:
     import graspi
 except:
-    print("Updated code: You need the graspi.py module.")
-    time.sleep(10)
-    exit()
+    print("Cannot find the RFC API module graspi.py.")
+    print("Will run with only the basic grasp.py module.")
+    _old_API = True
+    try:
+        import grasp as graspi
+    except:
+        print("Cannot import grasp.py")
+        time.sleep(10)
+        exit()
 import threading
 import cbor
 import random
@@ -50,7 +57,7 @@ keep_going = True
 # Register ASA/objectives
 ####################################
 
-err, asa_nonce = graspi.register_asa("Gray")
+err, asa_handle = graspi.register_asa("Gray")
 if not err:
     graspi.tprint("ASA Gray registered OK")
 else:
@@ -73,7 +80,7 @@ obj2.synch = True
 obj3 = graspi.objective("EX3")
 obj3.neg = True
 
-err = graspi.register_obj(asa_nonce,obj3,overlap=True)
+err = graspi.register_obj(asa_handle,obj3,overlap=True)
 if not err:
     graspi.tprint("Objective EX3 registered OK")
 else:
@@ -90,13 +97,13 @@ if keep_going:
 
     graspi.tprint("Synchronization tests will start; some may fail.")
 
-    err, result = graspi.synchronize(asa_nonce, obj1, None, 5000)
+    err, result = graspi.synchronize(asa_handle, obj1, None, 5000)
     if not err:
         graspi.tprint("Synchronized EX1", result.value)
     else:
         graspi.tprint("Synch failed EX1", graspi.etext[err])
 
-    err, result = graspi.synchronize(asa_nonce, obj2, None, 5000)
+    err, result = graspi.synchronize(asa_handle, obj2, None, 5000)
     if not err:
         graspi.tprint("Synchronized EX2", result.value)
     else:
@@ -105,20 +112,20 @@ if keep_going:
       
     #This should fail as test_obj was neither flooded or listened for.
     test_obj = graspi.objective("Nonsense")
-    err, result = graspi.synchronize(asa_nonce, test_obj, None, 5000)
+    err, result = graspi.synchronize(asa_handle, test_obj, None, 5000)
     if not err:
         graspi.tprint("Synchronized Nonsense (should fail)", result.value)
     else:
         graspi.tprint("Synch failed Nonsense (should fail)", graspi.etext[err])
 
     #repeat
-    err, result = graspi.synchronize(asa_nonce, obj2, None, 5000)
+    err, result = graspi.synchronize(asa_handle, obj2, None, 5000)
     if not err:
         graspi.tprint("Synchronized EX2", result.value)
     else:
         graspi.tprint("Synch failed EX2", graspi.etext[err])  
         
-    err, result = graspi.synchronize(asa_nonce, obj1, None, 5000)
+    err, result = graspi.synchronize(asa_handle, obj1, None, 5000)
     if not err:
         graspi.tprint("Synchronized EX1", result.value)
     else:
@@ -164,16 +171,9 @@ while keep_going:
     if failct > 3:
         failct = 0
         graspi.tprint("Flushing EX3 discovery")
-##        err, result = graspi.synchronize(asa_nonce, obj1, None, 5000)
-##        if not err:
-##            graspi.tprint("Synchronized EX1", result.value)
-##        else:
-##            graspi.tprint("Synch failed EX1", graspi.etext[err])
-##        if graspi.test_mode:
-##            dump_some()
-        _, ll = graspi.discover(asa_nonce, obj3, 1000, flush = True)
+        _, ll = graspi.discover(asa_handle, obj3, 1000, flush = True)
     else:
-        _, ll = graspi.discover(asa_nonce, obj3, 1000)
+        _, ll = graspi.discover(asa_handle, obj3, 1000)
     if ll==[]:
         graspi.tprint("Discovery failed")
         failct += 1
@@ -185,7 +185,11 @@ while keep_going:
         #CBORise the value
         obj3.value=cbor.dumps(obj3.value)
     
-    err, snonce, answer, reason = graspi.request_negotiate(asa_nonce, obj3, ll[0], None)
+    if _old_API:
+        err,shandle,answer = graspi.req_negotiate(asa_handle, obj3, ll[0], None)
+        reason = answer
+    else:
+        err,shandle,answer,reason = graspi.request_negotiate(asa_handle, obj3, ll[0], None)
     if err:
         if err==graspi.errors.declined and reason!="":
             _e = reason
@@ -195,8 +199,8 @@ while keep_going:
         failct += 1
         graspi.tprint("Fail count", failct)
         time.sleep(5) #to calm things if there's a looping error
-    elif (not err) and snonce:
-        graspi.ttprint("requested, session_nonce:",snonce,"answer",answer)
+    elif (not err) and shandle:
+        graspi.ttprint("requested, session_handle:",shandle,"answer",answer)
         if _cbor:
             try:
                 answer.value = cbor.loads(answer.value)
@@ -214,7 +218,12 @@ while keep_going:
                 if _cbor:
                     #CBORise the value
                     answer.value=cbor.dumps(answer.value)                
-                err,temp,answer,reason = graspi.negotiate_step(asa_nonce, snonce, answer, 1000)
+                _r = graspi.negotiate_step(asa_handle, shandle, answer, 1000)
+                if _old_API:
+                    err,temp,answer = _r
+                    reason = answer
+                else:
+                    err,temp,answer,reason = _r
                 graspi.ttprint("Loop count", step, "gave:", err, temp, answer, reason)
                 if _cbor and (not err):
                     try:
@@ -230,7 +239,7 @@ while keep_going:
                     proffer = int(0.9*proffer)
                     if answer.value[1] >= proffer:
                         #acceptable answer
-                        err = graspi.end_negotiate(asa_nonce, snonce, True)
+                        err = graspi.end_negotiate(asa_handle, shandle, True)
                         if not err:
                             graspi.tprint("Negotiation succeeded", answer.value)
                         else:
@@ -239,7 +248,7 @@ while keep_going:
                     if (not concluded) and (proffer < limit):
                         #not acceptable
                         graspi.tprint("Rejecting unacceptable offer")
-                        err = graspi.end_negotiate(asa_nonce, snonce, False, reason="You are mean!")
+                        err = graspi.end_negotiate(asa_handle, shandle, False, reason="You are mean!")
                         if err:
                             graspi.tprint("end_negotiate error:",graspi.etext[err])
                         concluded = True
@@ -256,7 +265,7 @@ while keep_going:
                     break
                 #end of inner loop
         else: #acceptable answer
-            err = graspi.end_negotiate(asa_nonce, snonce, True)
+            err = graspi.end_negotiate(asa_handle, shandle, True)
             if not err:
                 graspi.tprint("Negotiation succeeded", answer.value)
             else:
@@ -273,27 +282,31 @@ while keep_going:
     #end of a negotiating session
     
     time.sleep(5) #to keep things calm...
-    if graspi.grasp.test_mode:
-        dump_some()
+    if _old_API:
+        if graspi.test_mode:
+            dump_some()
+    else:
+        if graspi.grasp.test_mode:
+            dump_some()
     #try the flooded objective again
-    err, result = graspi.synchronize(asa_nonce, obj1, None, 5000)
+    err, result = graspi.synchronize(asa_handle, obj1, None, 5000)
     if not err:
         graspi.tprint("Synchronized EX1", result.value)
     else:
         graspi.tprint("Synch failed EX1", graspi.etext[err])
     #and try it differently
-    err, results = graspi.get_flood(asa_nonce, obj1)
+    err, results = graspi.get_flood(asa_handle, obj1)
     if not err:
         for x in results:
             graspi.tprint("Flooded EX1 from", x.source.locator, "=", x.objective.value)
     else:
         graspi.tprint("get_flood failed EX1", graspi.etext[err])
     try:   
-        if not graspi.checkrun(asa_nonce, "Gray"):
+        if not graspi.checkrun(asa_handle, "Gray"):
             keep_going = False
     except:
         #not running under ASA loader
         pass
         
-graspi.deregister_asa(asa_nonce, "Gray")
+graspi.deregister_asa(asa_handle, "Gray")
 graspi.tprint("ASA exiting")
