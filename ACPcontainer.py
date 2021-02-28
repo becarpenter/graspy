@@ -90,7 +90,7 @@ est_obj.value = "EST-TLS" #for RFC7030
 # communication with peers
 ####################################
 
-acp_address = grasp.unspec_address # This is the unspecified address,
+acp_address = grasp._unspec_address # This is the unspecified address,
                                    # which signals link-local address to API
 acp_ttl = 120000 #milliseconds to live of the announcement
 acp_locator = grasp.asa_locator(acp_address,0,False)
@@ -102,7 +102,7 @@ acp_locator.protocol = socket.IPPROTO_UDP
 # communication with peers
 ####################################
 
-est_address = grasp.unspec_address # This is the unspecified address,
+est_address = grasp._unspec_address # This is the unspecified address,
                                    # which signals link-local address to API
 est_ttl = 120000 #milliseconds to live of the announcement
 est_locator = grasp.asa_locator(est_address,0,False)

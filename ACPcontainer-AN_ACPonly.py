@@ -48,8 +48,6 @@ grasp.tprint("This is a demonstration Autonomic Service Agent.")
 grasp.tprint("It mimics an established ACP node by")
 grasp.tprint("announcing itself to potential on-link")
 grasp.tprint("peers by a flooded GRASP objective.")
-grasp.tprint("It also announce itself as an EST server.")
-grasp.tprint("This version gives the examples from the ACP RFC.")
 grasp.tprint("On Windows or Linux, there should soon be")
 grasp.tprint("a nice window that displays the process.")
 grasp.tprint("==========================")
@@ -81,58 +79,34 @@ acp_obj.synch = True
 acp_obj.value = "IKEv2"
 # acp_obj.loop_count not set, the API forces it to 1 for link-local use
 
-acp_obj2 = grasp.objective("AN_ACP")
-acp_obj2.synch = True
-acp_obj2.value = "DTLS"
-# acp_obj2.loop_count not set, the API forces it to 1 for link-local use
-
 est_obj = grasp.objective("SRV.est")
 est_obj.synch = True
-est_obj.value = None
-est_obj.loop_count = 255
-
-####################################
-# Shared values for AN_ACP
-# communication with peers
-####################################
-
-acp_address = grasp._unspec_address # This is the unspecified address,
-                                   # which signals link-local address to API
-acp_ttl = 120000 #milliseconds to live of the announcement
+est_obj.value = "EST-TLS" #for RFC7030
+# acp_obj.loop_count not set, the API forces it to 1 for link-local use
 
 ####################################
 # Create an asa_locator for IKEv2
 # communication with peers
 ####################################
 
+acp_address = grasp._unspec_address # This is the unspecified address,
+                                   # which signals link-local address to API
+acp_ttl = 120000 #milliseconds to live of the announcement
 acp_locator = grasp.asa_locator(acp_address,0,False)
 acp_locator.is_ipaddress = True
 acp_locator.protocol = socket.IPPROTO_UDP
-acp_locator.port = 15000
-
-####################################
-# Create an asa_locator for DTLS
-# communication with peers
-####################################
-
-acp_locator2 = grasp.asa_locator(acp_address,0,False)
-acp_locator2.is_ipaddress = True
-acp_locator2.protocol = socket.IPPROTO_UDP
-acp_locator2.port = 17000
 
 ####################################
 # Create an asa_locator for EST-TLS 
 # communication with peers
 ####################################
 
-#est_address = grasp._unspec_address # This is the unspecified address,
-#                                   # which signals link-local address to API
-est_address = grasp._my_address    # Routeable address
-est_ttl = 210000 #milliseconds to live of the announcement
+est_address = grasp._unspec_address # This is the unspecified address,
+                                   # which signals link-local address to API
+est_ttl = 120000 #milliseconds to live of the announcement
 est_locator = grasp.asa_locator(est_address,0,False)
 est_locator.is_ipaddress = True
 est_locator.protocol = socket.IPPROTO_TCP
-est_locator.port = 443
 
 ####################################
 # Register the objectives
@@ -145,12 +119,12 @@ else:
     grasp.tprint("Objective registration failure:", grasp.etext[_err])
     exit() # demo code doesn't handle registration errors
 
-_err = grasp.register_obj(_asa_nonce, est_obj)
-if not _err:
-    grasp.tprint("Objective", est_obj.name,"registered OK")
-else:
-    grasp.tprint("Objective registration failure:", grasp.etext[_err])
-    exit() # demo code doesn't handle registration errors
+##_err = grasp.register_obj(_asa_nonce, est_obj)
+##if not _err:
+##    grasp.tprint("Objective", est_obj.name,"registered OK")
+##else:
+##    grasp.tprint("Objective registration failure:", grasp.etext[_err])
+##    exit() # demo code doesn't handle registration errors
     
 ####################################
 # Start pretty printing
@@ -165,14 +139,10 @@ grasp.tprint("ACPcontainer starting now")
 ###################################
 
 while True:
-
-    grasp.tprint("Flooding",acp_obj.name, acp_locator.protocol, acp_locator.port,
-                 "and", acp_obj.name, acp_locator2.protocol, acp_locator2.port,
-                 "and",est_obj.name, est_locator.protocol, est_locator.port)
-    grasp.flood(_asa_nonce, acp_ttl, grasp.tagged_objective(acp_obj, acp_locator),
-                grasp.tagged_objective(acp_obj2, acp_locator2))
-    
-    grasp.flood(_asa_nonce, est_ttl, grasp.tagged_objective(est_obj, est_locator))
+    acp_locator.port = 500 + grasp._prng.randint(0,5) #slightly random for demo
+    est_locator.port = 80 + grasp._prng.randint(0,5)
+    grasp.tprint("Flooding",acp_obj.name, acp_locator.protocol, acp_locator.port)
+    grasp.flood(_asa_nonce, acp_ttl, grasp.tagged_objective(acp_obj, acp_locator))
 
     time.sleep(60) #The default SHOULD be 60 seconds, the
                    #value SHOULD be operator configurable.
