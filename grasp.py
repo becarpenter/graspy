@@ -74,7 +74,7 @@
 ########################################################
 ########################################################"""
 
-_version = "15-BC-20210205"
+_version = "15-BC-20210302"
 
 ##########################################################
 # The following change log records significant changes,
@@ -1645,7 +1645,7 @@ def _negloop(shandle, obj, timeout, sock, new_request):
                 _disactivate_session(shandle)
                 return errors.noPeer, None, None
                     
-            ttprint("negloop: raw reply:", rawmsg)
+            ttprint("negloop: raw reply:", rawmsg,"bytecount",len(rawmsg))
             try:
                 payload = cbor.loads(_decrypt_msg(rawmsg))
             except:
@@ -2072,7 +2072,7 @@ def grecv(asa_handle, shandle, timeout):
                 _disactivate_session(shandle)
                 return errors.noPeer, None
                     
-            ttprint("grecv: raw reply:", rawmsg)
+            ttprint("grecv: raw reply:", rawmsg,"bytecount",len(rawmsg))
             try:
                 payload = cbor.loads(_decrypt_msg(rawmsg))
             except:
@@ -3555,7 +3555,8 @@ class _mclisten(threading.Thread):
                     saddr = ipaddress.IPv6Address(send_addr[0])
                 sport = send_addr[1]
                 ifn = send_addr[3]
-                ttprint("Received multicast",rawmsg,"from",saddr,"port",sport,"interface",ifn)
+                ttprint("Received multicast",rawmsg,"from",saddr,"port",
+                        sport,"interface",ifn,"bytecount",len(rawmsg))
                 if _listen_self or (not [ifn, saddr] in _ll_zone_ids):
 
                     #Because we listen to ourselves in testing
@@ -4069,7 +4070,7 @@ class _tcp_listen(threading.Thread):
                 else:
                     a = aaddr[0]
                 send_addr=ipaddress.IPv6Address(a)
-                #ttprint("Received TCP", rawmsg, "from", send_addr)
+                #ttprint("Received TCP", rawmsg, "from", send_addr,"bytecount",len(rawmsg))
                 try:
                     payload = cbor.loads(_decrypt_msg(rawmsg))
                     ttprint("Received request: CBOR->Python:", payload)
