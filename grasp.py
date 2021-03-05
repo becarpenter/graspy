@@ -74,7 +74,7 @@
 ########################################################
 ########################################################"""
 
-_version = "15-BC-20210302"
+_version = "15-BC-20210306"
 
 ##########################################################
 # The following change log records significant changes,
@@ -206,6 +206,8 @@ _version = "15-BC-20210302"
 # 20210118 - tweak to allow "No key" bypass
 
 # 20210205 - graceful behaviour if import cryptography fails
+
+# 20210306 - store interface index with flooded objective
 
 
 ##########################################################
@@ -3978,7 +3980,7 @@ class _mchandler(threading.Thread):
                     for lo in lobjs:
                         #construct asa_locator from locator option
                         if lo.loco:
-                            _locs = _opt_to_asa_loc(lo.loco, None, False)
+                            _locs = _opt_to_asa_loc(lo.loco, from_ifi, False)
                             if len(_locs) == 1:
                                 _loc = _locs[0] #got exactly one locator
                                 if msg.ttl > 0:

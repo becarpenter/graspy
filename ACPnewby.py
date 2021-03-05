@@ -96,8 +96,10 @@ while True:
         for x in _results:           
             # Print the result
             grasp.tprint(x.objective.name, "value", x.objective.value,
-                         "locator", x.source.locator, x.source.protocol,
-                        x.source.port,"expiry",x.source.expire)
+                         "locator", x.source.locator,
+                         "interface", x.source.ifi,
+                         "protocol", x.source.protocol,
+                         "port", x.source.port,"expiry",x.source.expire)
     else:
         grasp.tprint("get_flood failed", grasp.etext[_err])
 
@@ -108,8 +110,10 @@ while True:
         for x in _results:           
             # Print the result
             grasp.tprint(x.objective.name, "value", x.objective.value,
-                         "locator", x.source.locator, x.source.protocol,
-                        x.source.port,"expiry",x.source.expire)
+                         "locator", x.source.locator,
+                         "interface", x.source.ifi,
+                         "protocol", x.source.protocol,
+                         "port", x.source.port,"expiry",x.source.expire)
     else:
         grasp.tprint("get_flood failed", grasp.etext[_err])
 
