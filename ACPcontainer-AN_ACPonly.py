@@ -3,8 +3,7 @@
 
 """This is some demo code showing how an established ACP node
 would advertise itself by flooding to on-link nodes seeking
-to join the ACP. Also how it could advertise itself as an
-EST server.
+to join the ACP.
 """
 
 import sys
@@ -76,13 +75,10 @@ else:
 
 acp_obj = grasp.objective("AN_ACP")
 acp_obj.synch = True
+acp_obj.discoverable = False  #override default
 acp_obj.value = "IKEv2"
 # acp_obj.loop_count not set, the API forces it to 1 for link-local use
 
-est_obj = grasp.objective("SRV.est")
-est_obj.synch = True
-est_obj.value = "EST-TLS" #for RFC7030
-# acp_obj.loop_count not set, the API forces it to 1 for link-local use
 
 ####################################
 # Create an asa_locator for IKEv2
@@ -96,17 +92,6 @@ acp_locator = grasp.asa_locator(acp_address,0,False)
 acp_locator.is_ipaddress = True
 acp_locator.protocol = socket.IPPROTO_UDP
 
-####################################
-# Create an asa_locator for EST-TLS 
-# communication with peers
-####################################
-
-est_address = grasp._unspec_address # This is the unspecified address,
-                                   # which signals link-local address to API
-est_ttl = 120000 #milliseconds to live of the announcement
-est_locator = grasp.asa_locator(est_address,0,False)
-est_locator.is_ipaddress = True
-est_locator.protocol = socket.IPPROTO_TCP
 
 ####################################
 # Register the objectives
@@ -119,12 +104,6 @@ else:
     grasp.tprint("Objective registration failure:", grasp.etext[_err])
     exit() # demo code doesn't handle registration errors
 
-##_err = grasp.register_obj(_asa_nonce, est_obj)
-##if not _err:
-##    grasp.tprint("Objective", est_obj.name,"registered OK")
-##else:
-##    grasp.tprint("Objective registration failure:", grasp.etext[_err])
-##    exit() # demo code doesn't handle registration errors
     
 ####################################
 # Start pretty printing
@@ -134,13 +113,12 @@ grasp.init_bubble_text("ACP container")
 grasp.tprint("ACPcontainer starting now")
 
 ###################################
-# Now flood the objectives out at
+# Now flood the objective out at
 # a suitable frequency
 ###################################
 
 while True:
     acp_locator.port = 500 + grasp._prng.randint(0,5) #slightly random for demo
-    est_locator.port = 80 + grasp._prng.randint(0,5)
     grasp.tprint("Flooding",acp_obj.name, acp_locator.protocol, acp_locator.port)
     grasp.flood(_asa_nonce, acp_ttl, grasp.tagged_objective(acp_obj, acp_locator))
 

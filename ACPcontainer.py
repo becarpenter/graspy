@@ -77,13 +77,15 @@ else:
 
 acp_obj = grasp.objective("AN_ACP")
 acp_obj.synch = True
+acp_obj.discoverable = False  #override default
 acp_obj.value = "IKEv2"
 # acp_obj.loop_count not set, the API forces it to 1 for link-local use
 
 est_obj = grasp.objective("SRV.est")
 est_obj.synch = True
+est_obj.discoverable = False  #override default
 est_obj.value = "EST-TLS" #for RFC7030
-# acp_obj.loop_count not set, the API forces it to 1 for link-local use
+# est_obj.loop_count not set, the API forces it to 1 for link-local use
 
 ####################################
 # Create an asa_locator for IKEv2

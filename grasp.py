@@ -74,7 +74,7 @@
 ########################################################
 ########################################################"""
 
-_version = "15-BC-20210306"
+_version = "15-BC-20210309"
 
 ##########################################################
 # The following change log records significant changes,
@@ -208,6 +208,8 @@ _version = "15-BC-20210306"
 # 20210205 - graceful behaviour if import cryptography fails
 
 # 20210306 - store interface index with flooded objective
+
+# 20210309 - allow for objectives with F_DISC = 0
 
 
 ##########################################################
@@ -347,6 +349,7 @@ A GRASP objective:
 """
     def __init__(self, name):
         self.name = name  #Unique name, string
+        self.discoverable = True #Set False if unwanted (unusual!)
         self.neg = False  #Set True if objective supports negotiation
         self.dry = False  #Set True if objective also supports dry-run negotiation
         self.synch = False  #Set True if objective supports synch
@@ -638,7 +641,9 @@ B_DRY = _bit(F_NEG_DRY)
 
 def _flagword(obj):
     """Create the flags word for an objective"""
-    _f = B_DISC #everything's discoverable
+    _f = 0
+    if obj.discoverable:
+        _f = B_DISC
     if obj.neg:
         _f |= B_NEG
     if obj.synch:
@@ -1898,7 +1903,7 @@ def listen_negotiate(asa_handle, obj):
     errorcode = _check_asa_obj(asa_handle, obj, False)
     if errorcode:
         return errorcode, None, None
-    if not obj.neg:
+    if (not obj.neg) or (not obj.discoverable):
         return errors.notNeg, None, None
     # check that GRASP is running securely
     if not _secure:
@@ -2269,6 +2274,9 @@ def listen_synchronize(asa_handle, obj):
     errorcode = _check_asa_obj(asa_handle, obj, True)
     if errorcode:
         return errorcode
+    # check that sync and discovery are allowed
+    if (not obj.synch) or (not obj.discoverable):
+        return errors.notSynch
     # check that GRASP is running securely
     if not _secure:
         return errors.noSecurity
@@ -4471,6 +4479,8 @@ def _initialise_grasp():
 
     if _my_address == None:
         tprint("Could not find a valid global IPv6 address, will generate a bogon for session disambiguation")
+        #Note - this trick is not sanctioned in the spec, which says that
+        #in such a case, a RFC7217-based link-local address must be used.
         _p = bytes.fromhex('20010db8f000baaaf000baaa')       #96 bits of prefix
         _x = struct.pack('!L', _prng.randint(0, 2147483647)) #32 bits of randomness
         _session_locator = ipaddress.IPv6Address(_p+_x)
