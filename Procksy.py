@@ -133,7 +133,7 @@ reg_obj.synch = True
 t_port = 11800 + grasp._prng.randint(0,5) #slightly random for demo
 u_port = 11900 + grasp._prng.randint(0,5) #slightly random for demo
 
-proxy_address = grasp.unspec_address # This is the unspecified address,
+proxy_address = grasp._unspec_address # This is the unspecified address,
                                      # which signals link-local address to API
 proxy_ttl = 180000 #milliseconds to live of the announcement
 
