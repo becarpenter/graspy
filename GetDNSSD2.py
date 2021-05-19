@@ -121,7 +121,7 @@ def resolve(n,q):
     #grasp.tprint(resolver)
     try:
         grasp.ttprint("Resolving",n,q)
-        a = dns.resolver.query(n,q)
+        a = dns.resolver.resolve(n,q)
         grasp.ttprint("Got",a)
         return a
     except:
@@ -404,7 +404,7 @@ else:
 ###################################
 
 try:
-    dns.resolver.query('_printer._sub._http._tcp.dns-sd.org.','PTR')
+    dns.resolver.resolve('_printer._sub._http._tcp.dns-sd.org.','PTR')
 except:
     dns.resolver.default_resolver = dns.resolver.Resolver(configure=False)
     dns.resolver.default_resolver.nameservers = [ '2001:4860:4860::8888',

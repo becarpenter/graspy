@@ -4,7 +4,7 @@
 """########################################################
 ########################################################
 # AskDNSSD is a demonstration Autonomic Service Agent.
-# It supports the unregistered GRASP objective 411:DNSSD
+# It supports the proposed GRASP objective family SRV.*
 # in order to request DNS-SD records from a server ASA
 #
 #
@@ -46,7 +46,7 @@
 
 import grasp
 import time
-import cbor
+import cbor #2 as cbor
 import ipaddress
 
 
