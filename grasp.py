@@ -10,12 +10,14 @@
 # This is a prototype/demo implementation of GRASP. It was
 # developed using Python 3.7.
 # 
-# It is based on RFC-to-be draft-ietf-anima-grasp-15. The API
-# is not compatible with RFC-to-be draft-ietf-anima-grasp-api-09.
+# It is based on RFC8990. The API is not fully compatible
+# with RFC8991; for that, use the module graspi.py, which
+# imports this module.
+#
 # This code is not guaranteed or validated in any way and is 
 # both incomplete and probably wrong. It makes no claim
 # to be production-quality code. Its main purpose is to
-# help improve the protocol specification.            
+# help validate the protocol specification.            
 #                                                     
 # Because it's demonstration code written in an       
 # interpreted language, performance is slow.          
@@ -74,7 +76,7 @@
 ########################################################
 ########################################################"""
 
-_version = "15-BC-20210309"
+_version = "RFC8990-BC-20210522"
 
 ##########################################################
 # The following change log records significant changes,

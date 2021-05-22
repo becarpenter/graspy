@@ -8,6 +8,10 @@ This code IS NOT INTENDED FOR PRODUCTION USE. See the license and disclaimers in
 Overview: see GRASP-intro.pdf
 Doc: see graspy.pdf
 
+Status on 2021-05-22
+
+Celebrating the publication of RFCs 8990-8995. Code here implements RFC8990 and RFC8991.
+
 Status on 2021-02-05
 
 Added experimental ASA_loader.py, a proof-of-concept ASA ecosystem. Updated Briggs & Gray accordingly.

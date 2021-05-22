@@ -9,9 +9,8 @@
 # programming interface for GRASP. It was developed using
 # Python 3.7.
 #
-# The API is based on RFC-to-be draft-ietf-anima-grasp-api-09.
-# The implementation relies on the module grasp.py, which is
-# based on RFC-to-be draft-ietf-anima-grasp-15. 
+# The API is based on RFC8991. The implementation relies
+# on the module grasp.py, which is based on RFC8990. 
 # This code is not guaranteed or validated in any way and is 
 # both incomplete and probably wrong. It makes no claim
 # to be production-quality code. Its main purpose is to

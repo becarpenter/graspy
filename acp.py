@@ -11,7 +11,8 @@
 # This module provides an interface for GRASP to a Layer 2
 # ACP, which is presumed to be intrinsically secure. It
 # is intended to be used by the grasp.py implementation
-# of GRASP.
+# of RFC8990. This module is *not* an implementation of
+# RFC8994.
 #                                                     
 # Because it's demonstration code written in an       
 # interpreted language, performance is slow.          
@@ -31,7 +32,7 @@
 # Released under the BSD 2-Clause "Simplified" or "FreeBSD"
 # License as follows:
 #                                                     
-# Copyright (C) 2015-2019 Brian E. Carpenter.                  
+# Copyright (C) 2015-2021 Brian E. Carpenter.                  
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with
