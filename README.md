@@ -6,11 +6,12 @@ This repository is for a Python 3 demonstration implementation of GRASP, the Gen
 This code IS NOT INTENDED FOR PRODUCTION USE. See the license and disclaimers in the graspi.py source file.
 
 Overview: see GRASP-intro.pdf
+
 Doc: see graspy.pdf
 
 Status on 2021-05-22
 
-Celebrating the publication of RFCs 8990-8995. Code here implements RFC8990 and RFC8991.
+Celebrating the publication of RFCs 8990-8995. Code here implements RFC8990, RFC8991 and RFC8992
 
 Status on 2021-02-05
 
