@@ -6,7 +6,8 @@
 # pfxm3 is a demonstration Autonomic Service Agent.
 # It supports the IPv6 Edge Prefix Management
 # objective 'PrefixManager' and its companion
-# 'PrefixManager.Params' for IPv6 and IPv4.
+# 'PrefixManager.Params' for IPv6 and IPv4,
+# as specified in RFC8992.
 #
 # As demonstration code it does not operate in real
 # prefix-assigning nodes or perform real prefix assignments.
@@ -14,7 +15,7 @@
 # Released under the BSD 2-Clause "Simplified" or "FreeBSD"
 # License as follows:
 #                                                     
-# Copyright (C) 2017 Brian E. Carpenter.                  
+# Copyright (C) 2017-2021 Brian E. Carpenter.                  
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with
