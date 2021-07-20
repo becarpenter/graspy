@@ -141,7 +141,7 @@ def build5254(ipv, addr, plen, form = "prefix"):
         _tag.value = cbor.dumps(addr)
     elif form == "prefix":
         #remove unwanted bytes
-        prefix = addr[:math.ceil(plen/8)-1]
+        prefix = addr[:math.ceil(plen/8)]
         _tag.value = cbor.dumps([plen, prefix])
     elif form == "interface":
         _tag.value = cbor.dumps([addr, plen])
@@ -241,6 +241,7 @@ def endit(snonce, r):
 ####################################
 # Thread to handle a PrefixManager negotiation
 ####################################
+
 
 class negotiator(threading.Thread):
     """Thread to negotiate PrefixManager as server"""
