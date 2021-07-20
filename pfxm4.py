@@ -129,50 +129,55 @@ def tname(x):
 # CBOR tag handling
 ####################################
 
-def build5254(ipv, addr, plen):
+def build5254(ipv, addr, plen, form = "prefix"):
     """build Tag 52 or 54"""
     if ipv == 6:
-        _tag54 = cbor.cbor.Tag(tag=54)
-        _tag54.value = cbor.dumps([addr, plen])
-        return _tag54
+        _tag = cbor.cbor.Tag(tag=54)
     elif ipv == 4:
-        _tag52 = cbor.cbor.Tag(tag=52)
-        _tag52.value = cbor.dumps([addr, plen])
-        return _tag52
+        _tag = cbor.cbor.Tag(tag=52)       
     else:
         return None
+    if form == "address":
+        _tag.value = cbor.dumps(addr)
+    elif form == "prefix":
+        #remove unwanted bytes
+        prefix = addr[:math.ceil(plen/8)-1]
+        _tag.value = cbor.dumps([plen, prefix])
+    elif form == "interface":
+        _tag.value = cbor.dumps([addr, plen])
+    return _tag
 
 
 
 def detag5254(x):
-    """decode tagged prefix
+    """decode tagged address or prefix
        --> version, addr, prefix length"""
     try:
         if x.tag == 54:
-            #IPv6 case
-            v = cbor.loads(x.value)
-            if tname(v) != 'list':
-                #not an array
-                return None, None, 1
-            if len(v[0]) != 16:
-                #not [address, plen]
-                return None, None, 2
-            return(6, v[0], v[1])
+            ipv = 6
         elif x.tag == 52:
-            #IPv4 case
-            v = cbor.loads(x.value)
-            if tname(v) != 'list':
-                #not an array
-                return None, None, 3
-            if len(v[0]) != 4:
-                #not [address, plen]
-                return None, None, 4
-            return(4, v[0], v[1])       
+            ipv = 4
+        else:
+            return (None, None, 0) #wrong tag
+        v = cbor.loads(x.value)
+        if tname(v) != 'list':
+            #not an array, must be a plain address
+            return ipv, v, None
+        if tname(v[0]) == 'int':
+            #must be a prefix spec [plen, address]
+            #fill out the prefix to 16 or 4 bytes
+            prefix = v[1]
+            if ipv == 4:
+                asize = 4
+            else:
+                asize = 16
+            while len(prefix) < asize:
+                prefix += bytes.fromhex('00')
+            return ipv, prefix, v[0]
+        #must be an interface spec [address, plen]
+        return(ipv, v[0], v[1])    
     except:
-        #no tag
-        pass
-    #no tag or wrong tag
-    return None, None, 5
+        return (None, None, 1) #no tag or format error
 
 
 ####################################
