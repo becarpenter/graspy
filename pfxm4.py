@@ -974,7 +974,7 @@ while True:
                     else:
                         #unacceptable
                         grasp.end_negotiate(asa_nonce, snonce, False, "Insufficient offer")
-                        grasp.tprint("Refused prefix of length",answer.value[lgth])
+                        grasp.tprint("Refused prefix of length",ll)
             else:
                 if err == grasp.errors.declined:
                     grasp.tprint("Peer declined:", answer)
