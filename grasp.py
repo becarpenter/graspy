@@ -76,7 +76,7 @@
 ########################################################
 ########################################################"""
 
-_version = "RFC8990-BC-20210522"
+_version = "RFC8990-BC-20210722"
 
 ##########################################################
 # The following change log records significant changes,
@@ -213,6 +213,7 @@ _version = "RFC8990-BC-20210522"
 
 # 20210309 - allow for objectives with F_DISC = 0
 
+# 20210722 - corrected Tag 24 handling
 
 ##########################################################
 
@@ -3047,17 +3048,11 @@ def _ass_obj(x):
     if tname(_val) == "bytes":
         #see if user supplied value as CBOR bytes
         try:
-            _ = cbor.loads(x.value)
+            _ = cbor.loads(_val)
             #seems to be valid CBOR, build Tag 24
             _tag24 = cbor.cbor.Tag(tag=24)
-            _length = len(_val)
-            #be lazy, don't optimise CBOR encoding
-            if  _length<65536:
-                _tag24.value = bytes.fromhex('59')+_length.to_bytes(2,byteorder='big')+_val
-                _val = _tag24
-            else:
-                #byte string too big, we'll send the raw bytes
-                pass
+            _tag24.value = _val
+            _val = _tag24
         except:
             #not valid CBOR, we'll send the raw bytes
             pass
@@ -3147,31 +3142,7 @@ def _detag_obj(x):
         if x.value.tag != 24:
             #wrong tag, return it as is
             return x
-        _x = x.value.value
-        #embedded bytes object, strip CBOR length metadata
-        #(see RFC7049 to understand this)
-        if _x[0] in range(0x40,0x57):
-            #4 bit length
-            _l = x[0] & 0x17
-            _x = _x[1:]
-        elif _x[0] == 0x58:
-            #8 bit length
-            _l = _x[1]
-            _x = _x[2:]
-        elif _x[0] == 0x59:
-            #16 bit length
-            _l = _x[2]+256*_x[1]
-            _x = _x[3:]
-        else:
-            #lazy code: give up
-            return x
-        if len(_x) != _l:
-            #the byte string was truncated or too long
-            grasp.tprint("Corrupt Tag 24 byte string")
-            x.value = b'\xf6' #best we can do is return a CBOR null           
-        #now we have plain CBOR, we could try to decode it,
-        #but that is better left to the ASA
-        x.value = _x
+        x.value = x.value.value
     except:
         #no tag, return it as is
         pass
