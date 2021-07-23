@@ -9,6 +9,10 @@ Overview: see GRASP-intro.pdf
 
 Doc: see graspy.pdf
 
+Status on 2021-07-22
+
+Fixed the CBOR Tag 24 handling. It was (incompatibly) wrong before.
+
 Status on 2021-05-22
 
 Celebrating the publication of RFCs 8990-8995. Code here implements RFC8990, RFC8991 and RFC8992
