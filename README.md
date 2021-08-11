@@ -1,13 +1,62 @@
 # graspy
-Python 3 demo code for GRASP protocol
+## Python 3 demo code for GRASP protocol
 
-This repository is for a Python 3 demonstration implementation of GRASP, the Generic Autonomic Signaling Protocol developed in the IETF ANIMA working group, and its API. It also contains some demonstration applications.
+This repository is for a Python 3 demonstration implementation of GRASP, the Generic Autonomic Signaling Protocol \[[RFC8990](https://www.rfc-editor.org/info/rfc8990)\] developed in the IETF ANIMA working group, and its API \[[RFC8991](https://www.rfc-editor.org/info/rfc8991)\]. It also contains some demonstration applications. It won't work on Python 2; Python 3.7 or higher is recommended.
 
 This code IS NOT INTENDED FOR PRODUCTION USE. See the license and disclaimers in the graspi.py source file.
 
-Overview: see GRASP-intro.pdf
+Overview of GRASP: see [GRASP-intro.pdf](https://github.com/becarpenter/graspy/blob/master/GRASP-intro.pdf)
 
-Doc: see graspy.pdf
+Documentation of this code: see [graspy.pdf](https://github.com/becarpenter/graspy/blob/master/graspy.pdf)
+
+The code was tested only on Windows 7 and 10, Linux and MacOS so far. In theory,
+the code will work on any host with Winsock2 or Posix compliant TCP/IPv6.
+When testing Autonomic Service Agents (ASAs), run each one in a separate instance of Python 3.
+You might need to be Administrator (Windows) or su (Linux).
+
+## Startup dialogue
+
+(See *skip_dialogue()* in the documentation if you don't want this dialogue in your ASA.)
+
+When it asks
+
+  *Test mode (many extra diagnostics)? Y/N:*
+  
+enter *n* (unless you want very detailed diagnostics).
+
+When it asks
+
+  *Diagnostics for inbound message parse errors? Y/N:*
+  
+enter *y* (unless you really don't care about message parsing errors).
+
+When it asks
+
+  *Listen to own multicasts? Y/N:*
+  
+enter *y* if running on a single machine. Although all instances will share
+the same IPv6 address, everything should work exactly as if each
+instance was on a separate machine.
+
+enter *n* if you have the luxury of testing with several machines on a network.
+This has been tested between Windows and Linux on a simple network including
+a physical layer loop, and on non-looped topologies with various mixtures of
+Linux, Windows 7 or 10 and MacOS.
+
+When it asks
+
+  *Insecure link-local mode (DULL)? Y/N:*
+
+enter *n* unless you know what you are doing (see graspy.pdf for more).
+
+When it asks
+
+   *Please enter the keying password for the domain.*
+
+enter a locally chosen domain password, or a null password to run
+insecurely (see graspy.pdf for more).
+
+## Summary of update history
 
 Status on 2021-07-22
 
@@ -54,54 +103,4 @@ Also the assigned GRASP port number, 7017, and the official
 link-local multicast address ff02::13 are now used.
 INCOMPATIBLE WITH PRE-2017 PYTHON GRASP RELEASES!
 
-They are coded in Python 3 and will fail with Python 2.
-
-The documentation for grasp.py and acp.py
-is in the file graspy.pdf
-
-There's a short overview presentation in
-the file GRASP-intro.pdf
-
-The code was tested only on Windows 7 and 10, Linux and MacOS so far. In theory,
-the code will work on any host with Winsock2 or Posix compliant TCP/IPv6.
-When testing ASAs, run each one in a separate instance of Python 3.
-You might need to be Administrator (Windows) or su (Linux).
-
-When it asks
-
-  Test mode (many extra diagnostics)? Y/N:
-  
-type n unless you want very detailed diagnostics.
-
-When it asks
-
-  Diagnostics for inbound message parse errors? Y/N:
-  
-type y unless you really don't care about parse errors
-
-When it asks
-
-  Listen to own multicasts? Y/N:
-  
-type y if running on a single machine. Although all instances will share
-the same IPv6 address, everything should work exactly as if each
-instance was on a separate machine.
-
-If you have the luxury of testing with several machines on a network, type n.
-This has been tested between Windows and Linux on a simple network including
-a physical layer loop, and on non-looped topologies with various mixtures of
-Linux, Windows 7 and MacOS.
-
-When it asks
-
-  Insecure link-local mode (DULL)? Y/N:
-
-type n unless you know what you are doing (see graspy.pdf for more).
-
-When it asks
-
-   Please enter the keying password for the domain.
-
-type in a locally chosen domain password, or a null password to run
-insecurely (see graspy.pdf for more).
-
+(end)
