@@ -5,9 +5,9 @@ This repository is for a Python 3 demonstration implementation of GRASP, the Gen
 
 This code IS NOT INTENDED FOR PRODUCTION USE. See the license and disclaimers in the graspi.py source file.
 
-Overview of GRASP: see [GRASP-intro.pdf](https://github.com/becarpenter/graspy/blob/master/GRASP-intro.pdf)
+Overview of GRASP: see [GRASP-intro.pdf](https://github.com/becarpenter/graspy/raw/master/GRASP-intro.pdf).
 
-Documentation of this code: see [graspy.pdf](https://github.com/becarpenter/graspy/blob/master/graspy.pdf)
+Documentation of this code: see [graspy.pdf](https://github.com/becarpenter/graspy/raw/master/graspy.pdf).
 
 The code was tested only on Windows 7 and 10, Linux and MacOS so far. In theory,
 the code will work on any host with Winsock2 or Posix compliant TCP/IPv6.
