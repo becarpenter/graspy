@@ -38,8 +38,7 @@
 #  - workarounds for defects in Python socket module and
 #    Windows socket peculiarities. Not tested on Android.
 #
-# Released under the BSD 2-Clause "Simplified" or "FreeBSD"
-# License as follows:
+# Released under the BSD "Revised" License as follows:
 #                                                     
 # Copyright (C) 2015-2021 Brian E. Carpenter.                  
 # All rights reserved.
@@ -55,7 +54,12 @@
 # 2. Redistributions in binary form must reproduce the above
 # copyright notice, this list of conditions and the following
 # disclaimer in the documentation and/or other materials
-# provided with the distribution.                                  
+# provided with the distribution.
+#
+# 3. Neither the name of the copyright holder nor the names of
+# its contributors may be used to endorse or promote products
+# derived from this software without specific prior written
+# permission.
 #
 # THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS  
 # AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED 
@@ -76,7 +80,7 @@
 ########################################################
 ########################################################"""
 
-_version = "RFC8990-BC-20210722"
+_version = "RFC8990-BC-20210825"
 
 ##########################################################
 # The following change log records significant changes,
@@ -215,6 +219,10 @@ _version = "RFC8990-BC-20210722"
 
 # 20210722 - corrected Tag 24 handling
 
+# 20210820 - prefer cbor2 over cbor (more error handling)
+#          - allow receiving long unicast messages
+#          - separate max message size settings
+
 ##########################################################
 
 ####################################
@@ -228,8 +236,9 @@ if sys.version_info[0] < 3 or \
    (sys.version_info[0] == 3 and sys.version_info[1]) < 4:
     raise RuntimeError("Must use Python 3.4 or later")
 
-# Each ASA starts with "import grasp"
-# List of main classes and functions included in the API:
+# Each ASA starts with "import graspi" for the RFC8991 API,
+# or "import grasp" for the old API.
+# List of main classes and functions included in the grasp.py API:
 
 def init(self):
     __all__ = ['objective', 'asa_locator', 'tagged_objective',
@@ -267,12 +276,16 @@ except:
     time.sleep(10)
 ###
 try:
-    import cbor
-    #import cbor2 as cbor
+    import cbor2 as cbor
 except:
-    print("Could not import cbor. Please do 'pip3 install cbor' and try again.")
-    time.sleep(10)
-    exit()
+    print("Could not import cbor2. Will try to import cbor instead.")
+    time.sleep(5)
+    try:
+        import cbor
+    except:
+        print("Could not import cbor. Please do 'pip3 install cbor2' and try again.")
+        time.sleep(10)          
+        exit()
 try:
     import acp
 except:
@@ -625,6 +638,9 @@ GRASP_LISTEN_PORT = 7017 # IANA port number
 GRASP_DEF_TIMEOUT = 60000 # milliseconds
 GRASP_DEF_LOOPCT = 6
 GRASP_DEF_MAX_SIZE = 2048 # max message size
+
+_multicast_size = GRASP_DEF_MAX_SIZE
+_unicast_size = GRASP_DEF_MAX_SIZE
 
 _unspec_address = ipaddress.IPv6Address('::') # Used in special cases
                                               # to indicate link local
@@ -1166,19 +1182,34 @@ def deregister_obj(asa_handle, obj):
 
 def _recvraw(sock):
     """Internal use only"""
-    rawmsg, send_addr = sock.recvfrom(GRASP_DEF_MAX_SIZE)
+    rawmsg, send_addr = sock.recvfrom(_unicast_size)
     if len(rawmsg) > 1200: # close to minimum IPv6 MTU
-        #need to check briefly for a second chunk
-        ttprint("Raw chunk length",len(rawmsg),"; waiting for more")
+        #need to check for more chunks
+        ttprint("First chunk length",len(rawmsg),"; waiting for more")
         _to = sock.gettimeout()
         sock.settimeout(0.2)
-        try:
-            raw2, _ = sock.recvfrom(GRASP_DEF_MAX_SIZE)
-            if len(raw2):
-                rawmsg += raw2
-        except:
-            pass #timeout, assume there's nothing more
+        while True:
+            try:
+                raw2, _ = sock.recvfrom(_unicast_size)
+                if len(raw2):
+                    rawmsg += raw2
+                else:
+                    break #no more bytes
+            except:
+                break #timeout, assume there's nothing more
         sock.settimeout(_to)
+
+##        #need to check briefly for a second chunk
+##        ttprint("Raw chunk length",len(rawmsg),"; waiting for more")
+##        _to = sock.gettimeout()
+##        sock.settimeout(0.2)
+##        try:
+##            raw2, _ = sock.recvfrom(GRASP_DEF_MAX_SIZE)
+##            if len(raw2):
+##                rawmsg += raw2
+##        except:
+##            pass #timeout, assume there's nothing more
+##        sock.settimeout(_to)        
         
     return rawmsg, send_addr
 
@@ -3530,7 +3561,7 @@ class _mclisten(threading.Thread):
         while True:
             try:
                 ttprint("Listening for LL multicasts")
-                rawmsg, send_addr = mcrsock.recvfrom(GRASP_DEF_MAX_SIZE)
+                rawmsg, send_addr = mcrsock.recvfrom(_multicast_size)
                 if "%" in send_addr[0]:
                     a,b = send_addr[0].split('%')
                     saddr = ipaddress.IPv6Address(a)
@@ -3723,8 +3754,6 @@ class _drlisten(threading.Thread):
             try:
                 ttprint("Listening for discovery response")
                 asock, aaddr = self.sock.accept()
-                # Note - can we safely use _recvraw() here?
-                #rawmsg, send_addr = asock.recvfrom(GRASP_DEF_MAX_SIZE)
                 rawmsg, send_addr = _recvraw(asock)
                 asock.close() 
                 if '%' in aaddr[0]:
@@ -4045,8 +4074,6 @@ class _tcp_listen(threading.Thread):
                 asock, aaddr = self.listen_sock.accept()
                 asock.set_inheritable(True)
                 ttprint("Talking on",asock.getsockname())
-                # Note - can we safely use _recvraw() here?
-                #rawmsg, send_addr = asock.recvfrom(GRASP_DEF_MAX_SIZE)
                 rawmsg, send_addr = _recvraw(asock)
                 if '%' in aaddr[0]:
                     a,b = aaddr[0].split('%') #strip any Zone ID

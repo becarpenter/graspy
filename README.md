@@ -3,7 +3,7 @@
 
 This repository is for a Python 3 demonstration implementation of GRASP, the Generic Autonomic Signaling Protocol \[[RFC8990](https://www.rfc-editor.org/info/rfc8990)\] developed in the IETF ANIMA working group, and its API \[[RFC8991](https://www.rfc-editor.org/info/rfc8991)\]. It also contains some demonstration applications. It won't work on Python 2; Python 3.7 or higher is recommended.
 
-This code IS NOT INTENDED FOR PRODUCTION USE. See the license and disclaimers in the graspi.py source file.
+This code IS NOT INTENDED FOR PRODUCTION USE. See the license and disclaimers in the grasp.py source file.
 
 Overview of GRASP: see [GRASP-intro.pdf](https://github.com/becarpenter/graspy/raw/master/GRASP-intro.pdf).
 
