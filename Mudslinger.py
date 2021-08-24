@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-"""Demo MUD thing using GRASP. See grasp.py for licence and disclaimers."""
+"""Demo MUD thing using GRASP. See grasp.py for license, copyright, and disclaimer."""
 
 import grasp
 import time

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-"""MUD certificate installer. See grasp.py for licence and disclaimers."""
+"""MUD certificate installer. See grasp.py for license, copyright, and disclaimer."""
 
 from subprocess import run
 from tkinter import Tk
