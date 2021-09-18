@@ -80,7 +80,7 @@
 ########################################################
 ########################################################"""
 
-_version = "RFC8990-BC-20210825"
+_version = "RFC8990-BC-20210918"
 
 ##########################################################
 # The following change log records significant changes,
@@ -222,6 +222,10 @@ _version = "RFC8990-BC-20210825"
 # 20210820 - prefer cbor2 over cbor (more error handling)
 #          - allow receiving long unicast messages
 #          - separate max message size settings
+#
+# 20210826 - fixed off-by-one in loop count check
+#
+# 20210918 - fixed bug in flood expiry for floods with no locator
 
 ##########################################################
 
@@ -1621,8 +1625,9 @@ def negotiate_step(asa_handle, shandle, obj, timeout):
         return errors.noSocket, None, None
 
     #loop count check
-    #(loop count is decremented in _negloop)
-    if obj.loop_count <1:
+    #(loop count will be decremented in _negloop)
+    if obj.loop_count <2:
+        #no point continuing??????????
         #note that other end times out in this case
         return errors.loopExhausted, None, None
 
@@ -3983,7 +3988,7 @@ class _mchandler(threading.Thread):
                         #invalid discovery format - do nothing
                         tprint("Discovery message has invalid content")
                 elif msg.mtype == M_FLOOD:
-                    ttprint("Got Flood message")
+                    ttprint("Got Flood message, TTL=", msg.ttl)
 
                     lobjs = msg.flood_list  #list of _flooded_objective
 
@@ -3993,15 +3998,18 @@ class _mchandler(threading.Thread):
                             _locs = _opt_to_asa_loc(lo.loco, from_ifi, False)
                             if len(_locs) == 1:
                                 _loc = _locs[0] #got exactly one locator
-                                if msg.ttl > 0:
-                                    _loc.expire = int(time.monotonic() + msg.ttl/1000)
-                                else:
-                                    _loc.expire = 0
+                                
                             else:
                                 tprint("Anomalous locator in flood ignored")
                                 _loc = asa_locator(None, None, False)
                         else:
-                            _loc = asa_locator(None, None, False)                        
+                            ttprint("No locator in flooded objective")
+                            _loc = asa_locator(None, None, False)
+                        if msg.ttl > 0:
+                            _loc.expire = int(time.monotonic() + msg.ttl/1000)
+                            ttprint("Setting expiry",_loc.expire)
+                        else:
+                            _loc.expire = 0
 
                         #construct and store objective
                         obj = lo.obj                      
@@ -4327,7 +4335,7 @@ def _initialise_grasp():
     tprint("on an underlying ACP for security. Use it at your own risk!")
     #print("For further details see http://xkcd.com/1742/")
     tprint("Python GRASP Version",_version,"released under the")
-    tprint("simplified BSD license.")
+    tprint("Revised BSD license.")
     tprint("Will use port", GRASP_LISTEN_PORT)
     tprint("Will use multicast address", ALL_GRASP_NEIGHBORS_6)
 
