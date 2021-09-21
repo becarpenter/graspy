@@ -8,7 +8,7 @@
 # Module name is 'grasp'
 #                                                     
 # This is a prototype/demo implementation of GRASP. It was
-# developed using Python 3.7.
+# developed using Python 3.4 and above.
 # 
 # It is based on RFC8990. The API is not fully compatible
 # with RFC8991; for that, use the module graspi.py, which
@@ -80,7 +80,7 @@
 ########################################################
 ########################################################"""
 
-_version = "RFC8990-BC-20210918"
+_version = "RFC8990-BC-20210922"
 
 ##########################################################
 # The following change log records significant changes,
@@ -226,6 +226,10 @@ _version = "RFC8990-BC-20210918"
 # 20210826 - fixed off-by-one in loop count check
 #
 # 20210918 - fixed bug in flood expiry for floods with no locator
+#
+# 20210919 - added experimental _figger ASA (self-configuration ASA)
+#
+# 20210920 - added "ask" options to skip_dialogue(), removed "quadsing" parameter
 
 ##########################################################
 
@@ -915,39 +919,37 @@ def _decrypt_msg(crypt):
 #                                  
 ####################################
 
-def skip_dialogue(testing=False, selfing=False, diagnosing=False,
+def skip_dialogue(testing=False, selfing=False, diagnosing=True,
                   quadsing=True, be_dull=False):
     """
 ####################################################################
-# skip_dialogue(testing=False, selfing=False, diagnosing=False,
-#               quadsing=True, be_dull=False)
+# skip_dialogue(testing=False, selfing=False, diagnosing=True,
+#               be_dull=False)
 #                                  
-# A utility function that tells GRASP to skip initial dialogue
-#
-# Default is not test mode and not listening to own multicasts
-# and not printing message syntax diagnostics
-# and try QUADS security (unless DULL)
+# A utility function that tells GRASP to skip some or all of its
+# initial dialogue. Each parameter may be True, False or the string "ask".
+# Default is:
+# not test mode
+# not listening to own multicasts
+# printing message syntax diagnostics
 # and not DULL
+#
 # Must be called before register_asa()
 #
-# No return value                                  
+# No return value
+#
+# The quadsing parameter is obsolete (defined for compatibility)                                 
 ####################################################################
 """
-    global _skip_dialogue, test_mode, _listen_self, _mess_check, _grasp_initialised, DULL
+    global _skip_dialogue, test_mode, _listen_self, _mess_check, _grasp_initialised, DULL, _be_dull
     if _grasp_initialised:
         return
     _skip_dialogue = True
     test_mode = testing
     _listen_self = selfing
     _mess_check = diagnosing
-    if quadsing and not DULL:
-        try:
-            import quadsk
-            _ini_crypt(key=quadsk.key,iv=quadsk.iv)
-        except:
-            tprint("No cryptography keys installed")
-    else:
-        tprint("Insecure GRASP instance")
+    _be_dull = be_dull       #too early to set the actual DULL flag
+    
 
 
 
@@ -4207,6 +4209,98 @@ class _watcher(threading.Thread):
                 # flag MC handler to restart on timeout
                 _mc_restart = True
 
+
+class _figger(threading.Thread):
+    """Internal use only"""
+
+########################################################
+# Configger is an Autonomic Service Agent.
+# It supports the proposed GRASP objective GraspConfig
+# in order to receive and apply GRASP configuration
+# information in an autonomic node.
+#
+# It is built into the GRASP core and should run
+# indefinitely.
+#########################################################
+
+    def __init__(self):
+        threading.Thread.__init__(self, daemon=True)
+
+    def run(self):
+
+        global _multicast_size, _unicast_size
+
+        time.sleep(4)  #ensure that GRASP initialisation is done
+
+        ###################################
+        # Constants for reading dictionary
+        ###################################
+
+        class codepoints:
+            """Code points for configuration dictionary"""
+            def __init__(self):
+                self.sender = 0
+                self.sender_loop_count = 1
+                self.grasp_version = 2
+                self.max_multicast = 3
+                self.max_unicast = 4
+                
+        cp = codepoints()
+
+        tprint("ASA Configger is starting up.")
+
+
+        ####################################
+        # Register ASA
+        ####################################
+
+        err,asa_handle = register_asa("Configger")
+        if err:
+            raise Exception("Could not register ASA Configger, "+etext[err])
+            
+
+        ####################################
+        # Define objective
+        ####################################
+
+
+        obj1 = objective("GraspConfig")
+        obj1.synch = True
+
+
+        ###################################
+        # Check objective for ever
+        ###################################
+
+        while True:
+            err, objs = get_flood(asa_handle, obj1)
+            if err:
+                tprint("Configger get-flood error:", etext[err])
+            elif objs:
+                reply = objs[0].objective #take the first one (really should analyze multiple replies)
+##                if cp.sender in reply.value:
+##                    ttprint("Received",reply.name, "from", ipaddress.IPv6Address(reply.value[cp.sender]))
+##                if cp.sender_loop_count in reply.value:
+##                    ttprint(reply.name,"hops", reply.value[cp.sender_loop_count]-reply.loop_count+1)
+##                if cp.grasp_version in reply.value:
+##                    ttprint("GRASP version", reply.value[cp.grasp_version])
+##                if cp.max_hops in reply.value:
+##                    ttprint("Maximum hops", reply.value[cp.max_hops])
+                if cp.max_multicast in reply.value:
+                    #configure multicast size
+                    _msize = reply.value[cp.max_multicast]
+                    if _msize != _multicast_size and _msize > GRASP_DEF_MAX_SIZE and _msize < 10*GRASP_DEF_MAX_SIZE:
+                        tprint("Changing max multicast size to", _msize)
+                        _multicast_size = _msize
+                if cp.max_unicast in reply.value:
+                    #configure unicast size
+                    _usize = reply.value[cp.max_unicast]
+                    if _usize != _unicast_size and _usize > GRASP_DEF_MAX_SIZE and _usize < 10*GRASP_DEF_MAX_SIZE:
+                        tprint("Changing max unicast size to", _usize)
+                        _unicast_size = _usize
+
+            time.sleep(70)
+
 def dump_all(partial=False):
     """
 Utility function dump_all() prints various GRASP data
@@ -4298,7 +4392,7 @@ def _initialise_grasp():
     global _tls_required
     global _crypto
     global _secure
-    global DULL
+    global DULL, _be_dull
     global _rapid_supported
     global _mcq
     global _drq
@@ -4339,7 +4433,7 @@ def _initialise_grasp():
     tprint("Will use port", GRASP_LISTEN_PORT)
     tprint("Will use multicast address", ALL_GRASP_NEIGHBORS_6)
 
-    if not _skip_dialogue:
+    if (not _skip_dialogue) or (test_mode == "ask"):
     
         ####################################
         # Run in test mode?                # 
@@ -4356,6 +4450,8 @@ def _initialise_grasp():
         except:
             pass
 
+    if (not _skip_dialogue) or (_mess_check == "ask"):
+
         ####################################
         # Strict checking ?                # 
         ####################################
@@ -4369,6 +4465,8 @@ def _initialise_grasp():
                     _mess_check = True
         except:
             pass
+
+    if (not _skip_dialogue) or (_listen_self == "ask"):
 
         ####################################
         # Listen to own LL multicasts?     # 
@@ -4385,6 +4483,8 @@ def _initialise_grasp():
         except:
             pass
 
+    if (not _skip_dialogue) or (_be_dull == "ask"):
+
         ####################################
         # DULL mode?                       # 
         ####################################
@@ -4399,16 +4499,24 @@ def _initialise_grasp():
                     #ttprint("WARNING: Insecure Discovery Unsolicited Link-Local (DULL) mode")
         except:
             pass
+    else:
+        DULL = _be_dull
 
-        ####################################
-        # Initialise QUADS (unless DULL)   #
-        ####################################
-        if not DULL:
-            try:
-                import quadsk
-                _ini_crypt(key=quadsk.key,iv=quadsk.iv)
-            except:
-                _ini_crypt() #No cryptography keys installed
+
+
+    ####################################
+    # Initialise QUADS (unless DULL)   #
+    ####################################
+    if not DULL:
+        try:
+            import quadsk
+            _ini_crypt(key=quadsk.key,iv=quadsk.iv)
+        except:
+            tprint("No pre-installed cryptography keys")
+            _ini_crypt() #No cryptography keys installed
+            
+    else:
+        tprint("Insecure DULL GRASP instance")
         
     ####################################
     # Initialise global variables      #
@@ -4563,12 +4671,19 @@ def _initialise_grasp():
     _watcher().start()
     ttprint("Set up ACP watcher")
 
+    _grasp_initialised = True
+
+    ####################################
+    # Start configuration ASA          #
+    ####################################
+
+    _figger().start()    
+
     ####################################
     # GRASP initialisation complete!   #
     ####################################
 
-    time.sleep(2) # to avoid printing glitch
-    _grasp_initialised = True
+    time.sleep(2) # to avoid printing glitch    
     tprint("GRASP startup function exiting")
 
 ####################################
@@ -4579,6 +4694,7 @@ _print_lock = threading.Lock() # printing might be needed before init!
 test_mode = False              # referenced by skip_dialogue(), used by printing
 _listen_self = False           # referenced by skip_dialogue()
 DULL = False                   # referenced by skip_dialogue()
+_be_dull = False               # referenced by skip_dialogue()
 _skip_dialogue = False         # referenced by skip_dialogue()
 _dobubbles = False             # Don't bubble print by default
 _bubbleQ = queue.Queue(100)    # Will be used if bubble printing

@@ -1,0 +1,5 @@
+{"sender_loop_count": 15,
+ "grasp_version": 1,
+ "max_multicast": 8192,
+ "max_unicast": 5000
+}
