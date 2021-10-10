@@ -80,7 +80,7 @@
 ########################################################
 ########################################################"""
 
-_version = "RFC8990-BC-20210922"
+_version = "RFC8990-BC-20211010"
 
 ##########################################################
 # The following change log records significant changes,
@@ -230,7 +230,10 @@ _version = "RFC8990-BC-20210922"
 # 20210919 - added experimental _figger ASA (self-configuration ASA)
 #
 # 20210920 - added "ask" options to skip_dialogue(), removed "quadsing" parameter
-
+#
+# 20211010 - fixed dependency on CBOR library tag handling
+#          - tuned startup dialogue defaults    
+#
 ##########################################################
 
 ####################################
@@ -285,11 +288,13 @@ except:
 ###
 try:
     import cbor2 as cbor
+    _cborv = 2
 except:
     print("Could not import cbor2. Will try to import cbor instead.")
     time.sleep(5)
     try:
         import cbor
+        _cborv = 1
     except:
         print("Could not import cbor. Please do 'pip3 install cbor2' and try again.")
         time.sleep(10)          
@@ -2658,14 +2663,18 @@ def tprint(*whatever,ttp=False):
     for x in whatever:
         try:
             if test_mode:           #want bytes printed in hex
-                xx=copy.deepcopy(x) #avoid overwriting anything
-                xx = _hexit(xx)
+                try:
+                    xx=copy.deepcopy(x) #avoid overwriting anything
+                    xx = _hexit(xx)
+                except:
+                    xx = x              #we hit something that cannot be deep copied
+                                        #(example: cbor2.CBORTag)
             else:
                 xx=x               
             _s=_s+str(xx)+" "
             print(xx,end=" ",flush=False)
         except:
-            #in case UTF-8 string can't be printed
+            #in case UTF-8 string (or something else) can't be printed
             print("[unprintable]",end="",flush=False)
     print("")
 
@@ -3088,7 +3097,10 @@ def _ass_obj(x):
         try:
             _ = cbor.loads(_val)
             #seems to be valid CBOR, build Tag 24
-            _tag24 = cbor.cbor.Tag(tag=24)
+            if _cborv == 1:
+                _tag24 = cbor.Tag(tag=24)
+            else:
+                _tag24 = cbor.CBORTag(24)
             _tag24.value = _val
             _val = _tag24
         except:
@@ -4450,21 +4462,27 @@ def _initialise_grasp():
         except:
             pass
 
+        if test_mode:
+            tprint("Running in test mode.")
+
     if (not _skip_dialogue) or (_mess_check == "ask"):
 
         ####################################
         # Strict checking ?                # 
         ####################################
 
-        _mess_check = False         # Set this True for detailed format
+        _mess_check = True         # Set this True for detailed format
                                    # diagnostics for incoming messages
         try:
             _l = input("Diagnostics for inbound message parse errors? Y/N:")
             if _l:
-                if _l[0] == "Y" or _l[0] == "y":
-                    _mess_check = True
+                if _l[0] == "N" or _l[0] == "n":
+                    _mess_check = False
         except:
             pass
+
+        if test_mode and not _mess_check:
+            tprint("No parsing diagnostics.")
 
     if (not _skip_dialogue) or (_listen_self == "ask"):
 
@@ -4472,16 +4490,18 @@ def _initialise_grasp():
         # Listen to own LL multicasts?     # 
         ####################################
 
-        _listen_self = False
+        _listen_self = True
 
         try:
             _l = input("Listen to own multicasts? Y/N:")
             if _l:
-                if _l[0] == "Y" or _l[0] == "y":
-                    _listen_self = True
-                    #ttprint("WARNING: Will listen to own LL multicasts")
+                if _l[0] == "N" or _l[0] == "n":
+                    _listen_self = False
         except:
             pass
+
+        if test_mode and not _listen_self:
+            tprint("Not listening to own LL multicasts.")
 
     if (not _skip_dialogue) or (_be_dull == "ask"):
 
@@ -4496,7 +4516,6 @@ def _initialise_grasp():
             if _l:
                 if _l[0] == "Y" or _l[0] == "y":
                     DULL = True
-                    #ttprint("WARNING: Insecure Discovery Unsolicited Link-Local (DULL) mode")
         except:
             pass
     else:
@@ -4516,7 +4535,7 @@ def _initialise_grasp():
             _ini_crypt() #No cryptography keys installed
             
     else:
-        tprint("Insecure DULL GRASP instance")
+        tprint("Insecure Discovery Unsolicited Link-Local (DULL) mode")
         
     ####################################
     # Initialise global variables      #
