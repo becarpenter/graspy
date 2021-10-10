@@ -20,7 +20,12 @@ import grasp
 import threading
 import time
 import datetime
-import cbor
+try:
+    import cbor2 as cbor
+    _cborv = 2
+except:
+    import cbor
+    _cborv = 1
 import ipaddress
 import struct
 import binascii
@@ -301,24 +306,24 @@ class delegator(threading.Thread):
 # Functions for prefix manipulation
 ###################################
 
-bytemasks = ['','80','c0','e0','f0','f8','fc','fe','ff']
+bytemasks = [b'\x00',b'\x80',b'\xc0',b'\xe0',b'\xf0',b'\xf8',b'\xfc',b'\xfe',b'\xff']
 
 def make_mask(plen):
     """-> bytes object that is a mask of plen bits"""
     
-    mask = bytes.fromhex('')
+    mask = b''
     for i in range(0,plen//8):
-        mask += bytes.fromhex('ff')
-    mask += bytes.fromhex(bytemasks[plen%8])
+        mask += b'\xff'
+    mask += bytemasks[plen%8]
     while len(mask)<16:
-        mask += bytes.fromhex('00')
+        mask += b'\x00'
     return mask    
 
 def mask_prefix(plen,prefix):
     """-> packed prefix masked to length plen"""
 
     m = make_mask(plen)    
-    r = bytes.fromhex('')
+    r = b''
     for i in range(0,16):
         r += bytes([(prefix[i]&m[i])%256])
     return r
@@ -346,13 +351,13 @@ def split_prefix(plen, prefix):
         grasp.tprint("Cannot split prefix", prefstr(plen,prefix)) 
         raise RuntimeError("Unsplittable prefix")
     new_plen = plen + 1
-    new_pref = bytes.fromhex('')
+    new_pref = b''
     j = plen//8
     for i in range(0,j):
         new_pref += bytes([prefix[i]])      
     new_pref += bytes([prefix[j] | bitmasks[new_plen%8]])
     while len(new_pref)<16:
-        new_pref += bytes.fromhex('00')
+        new_pref += b'\x00'
     return new_plen, prefix, new_plen, new_pref
 
 
@@ -372,11 +377,11 @@ def create_pool():
     #would input a prefix from the NOC by some mechanism TBD
     #and would need to save persistent state
     
-    ini_pref = None
+    ini_pref = [32,bytes.fromhex('20010db8000000000000000000000000')]
     try:
-        _ = input("Default IPv6 prefix for pool? Y/N:")
+        _ = input("Choose IPv6 prefix for pool? Y/N:")
         if _[0] == "Y" or _[0] =="y":
-            ini_pref = [32,bytes.fromhex('20010db8000000000000000000000000')]
+            ini_pref = None
     except:
         pass
     if ini_pref == None:
@@ -406,15 +411,19 @@ def create_pool():
     ppool.append(ini_pref)
     pool_lock.release()
 
+    do4 = True
     try:
-        _ = input("Create IPv4 (Net 10) pool? Y/N:")
-        if _[0] == "Y" or _[0] =="y":
-            ini_pref4 = [104,ipaddress.IPv6Address("::ffff:10.0.0.0").packed]
-            pool_lock.acquire()
-            ppool.append(ini_pref4)
-            pool_lock.release()
+        _ = input("Support IPv4? Y/N:")
+        if not (_[0] == "N" or _[0] =="n"):
+            do4 = False
     except:
         pass
+    if do4:
+        ini_pref4 = [104,ipaddress.IPv6Address("::ffff:10.0.0.0").packed]
+        pool_lock.acquire()
+        ppool.append(ini_pref4)
+        pool_lock.release()
+        print("Created IPv4 (Net 10) pool")
     return
 
 mappedpfx = bytes.fromhex('00000000000000000000ffff')
@@ -603,7 +612,7 @@ grasp.tprint("It supports the IP Edge Prefix Management")
 grasp.tprint("objective 'PrefixManager' and its companion")
 grasp.tprint("'PrefixManager.Params', for IPv6 and IPv4.")
 grasp.tprint("")
-grasp.tprint("Supports draft-ietf-anima-prefix-management-04.")
+grasp.tprint("Supports RFC8992.")
 grasp.tprint("As demonstration code it does not operate in real")
 grasp.tprint("prefix-assigning nodes or perform real assignments.")
 grasp.tprint("")
@@ -628,6 +637,8 @@ subnet_length = subnet_default
 # Input mode etc. from user
 # If origin, create initial pool
 ####################################
+
+print("Startup dialogue: press Enter for defaults")
 
 try:
     _ = input("Act as origin? Y/N:")
