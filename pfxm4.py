@@ -8,7 +8,7 @@
 # objective 'PrefixManager' and its companion
 # 'PrefixManager.Params' for IPv6 and IPv4, but NOT as
 # specified in RFC8992. This version uses CBOR tags
-# 52 and 54 as per draft-ietf-cbor-network-addresses-05
+# 52 and 54 as per draft-ietf-cbor-network-addresses
 #
 # As demonstration code it does not operate in real
 # prefix-assigning nodes or perform real prefix assignments.
@@ -21,7 +21,12 @@ import grasp
 import threading
 import time
 import datetime
-import cbor
+try:
+    import cbor2 as cbor
+    _cborv = 2
+except:
+    import cbor
+    _cborv = 1
 import ipaddress
 import struct
 import binascii
@@ -92,6 +97,11 @@ def tname(x):
     """-> name of type of x"""
     return type(x).__name__
 
+#########################################
+# Some very handy constants...
+#########################################
+
+bytemasks = [b'\x00',b'\x80',b'\xc0',b'\xe0',b'\xf0',b'\xf8',b'\xfc',b'\xfe',b'\xff']
 
 ####################################
 # CBOR tag handling
@@ -100,19 +110,26 @@ def tname(x):
 def build5254(ipv, addr, plen, form = "prefix"):
     """build Tag 52 or 54"""
     if ipv == 6:
-        _tag = cbor.cbor.Tag(tag=54)
+        if _cborv == 1:
+            _tag = cbor.Tag(tag=54)
+        else:
+            _tag = cbor.CBORTag(54)
     elif ipv == 4:
-        _tag = cbor.cbor.Tag(tag=52)       
+        if _cborv == 1:
+            _tag = cbor.Tag(tag=52)
+        else:
+            _tag = cbor.CBORTag(52)      
     else:
         return None
     if form == "address":
-        _tag.value = cbor.dumps(addr)
+        _tag.value = addr
     elif form == "prefix":
         #remove unwanted bytes
         prefix = addr[:math.ceil(plen/8)]
-        _tag.value = cbor.dumps([plen, prefix])
+        _tag.value = [plen, prefix]
+
     elif form == "interface":
-        _tag.value = cbor.dumps([addr, plen])
+        _tag.value = [addr, plen]
     return _tag
 
 
@@ -123,11 +140,13 @@ def detag5254(x):
     try:
         if x.tag == 54:
             ipv = 6
+            asize = 16
         elif x.tag == 52:
             ipv = 4
+            asize = 4
         else:
             return (None, None, 0) #wrong tag
-        v = cbor.loads(x.value)
+        v = x.value
         if tname(v) != 'list':
             #not an array, must be a plain address
             return ipv, v, None
@@ -135,12 +154,11 @@ def detag5254(x):
             #must be a prefix spec [plen, address]
             #fill out the prefix to 16 or 4 bytes
             prefix = v[1]
-            if ipv == 4:
-                asize = 4
-            else:
-                asize = 16
+            if prefix[v[0]//8] & bytemasks[v[0]%8][0] != prefix[v[0]//8]:
+                grasp.ttprint(v[0],prefix)
+                return (None, None, 2) #extra bits in prefix
             while len(prefix) < asize:
-                prefix += bytes.fromhex('00')
+                prefix += b'\x00'
             return ipv, prefix, v[0]
         #must be an interface spec [address, plen]
         return(ipv, v[0], v[1])    
@@ -229,86 +247,89 @@ class negotiator(threading.Thread):
             _cbor = False
 
         req_ipv, _, req_plen = detag5254(nobj.value)
-        
-        grasp.tprint("Got request for IPv"+str(req_ipv)+"; length=", req_plen)
-        if nobj.dry:
-            grasp.tprint("Dry run (not handled by this implementation)")
-        result=True
-        reason=None       
 
-        if len(ppool) == 0:
-            endit(snonce, "Prefix pool empty")
-        elif req_ipv == 6:
-            if req_plen < 32 or req_plen > subnet_max:
-                endit(snonce, "Prefix length out of range")
-            else:
-                pref = get_from_pool(req_plen)
-                if not pref:
-                    #other end wants too much, we try to make an offer
-                    while (not pref) and (req_plen < subnet_max):
-                        req_plen +=1
-                        pref = get_from_pool(req_plen)
-                if pref:
-                    nobj.value = build5254(6, pref, req_plen)
-                    grasp.tprint("Starting negotiation")
-                    #we are offering the shortest prefix we can, so no
-                    #negotiation loop can happen
-                    grasp.tprint("Offering", prefstr(req_plen,pref))
-                    if _cbor:
-                        nobj.value=cbor.dumps(nobj.value)
-                    err,temp,nobj = grasp.negotiate_step(asa_nonce, snonce, nobj, 1000)
-                    grasp.ttprint("Step gave:", err, temp, nobj)
-                    if (not err) and temp==None:
-                        grasp.tprint("Negotiation succeeded") 
-                    elif not err:
-                        #we don't have enough resource, we will reject
-                        insert_pool(req_plen, pref)
-                        endit(snonce, "Insufficient resource")
-                    else:    
-                        #other end rejected or loop count exhausted
-                        insert_pool(req_plen, pref)
-                        if err==grasp.errors.loopExhausted:
-                            # we need to signal the end
-                            endit(snonce, "Loop count exhausted")
-                        else:
-                            grasp.tprint("Failed:", grasp.etext[err])
-                    #end of negotiation 
+        if not req_ipv:
+            endit(snonce, "Bad tag "+str(req_plen))
+        else:
+            grasp.tprint("Got request for IPv"+str(req_ipv)+"; length=", req_plen)
+            if nobj.dry:
+                grasp.tprint("Dry run (not handled by this implementation)")
+            result=True
+            reason=None       
+
+            if len(ppool) == 0:
+                endit(snonce, "Prefix pool empty")
+            elif req_ipv == 6:
+                if req_plen < 32 or req_plen > subnet_max:
+                    endit(snonce, "Prefix length out of range")
                 else:
-                    #got nothing suitable from pool
-                    endit(snonce, "No prefix available")
-        elif req_ipv == 4:
-            if req_plen < 16 or req_plen > 32:
-                endit(snonce, "Prefix length out of range")
-            else:
-                pref = get4_from_pool(req_plen)
-                if pref:
-                    nobj.value = build5254(4, pref[12:], req_plen)
-                    grasp.tprint("Starting negotiation")
-                    #we are offering the shortest prefix we can, so no
-                    #negotiation loop can happen
-                    grasp.tprint("Offering", pref4str(req_plen,pref[12:]))
-                    if _cbor:
-                        nobj.value=cbor.dumps(nobj.value)
-                    err,temp,nobj = grasp.negotiate_step(asa_nonce, snonce, nobj, 1000)
-                    grasp.ttprint("Step gave:", err, temp, nobj)
-                    if (not err) and temp==None:
-                        grasp.tprint("Negotiation succeeded") 
-                    elif not err:
-                        #we don't have enough resource, we will reject
-                        insert_pool(req_plen, pref)
-                        endit(snonce, "Insufficient resource")
-                    else:    
-                        #other end rejected or loop count exhausted
-                        insert_pool(req_plen, pref)
-                        if err==grasp.errors.loopExhausted:
-                            # we need to signal the end
-                            endit(snonce, "Loop count exhausted")
-                        else:
-                            grasp.tprint("Failed:", grasp.etext[err])
-                    #end of negotiation 
+                    pref = get_from_pool(req_plen)
+                    if not pref:
+                        #other end wants too much, we try to make an offer
+                        while (not pref) and (req_plen < subnet_max):
+                            req_plen +=1
+                            pref = get_from_pool(req_plen)
+                    if pref:
+                        nobj.value = build5254(6, pref, req_plen)
+                        grasp.tprint("Starting negotiation")
+                        #we are offering the shortest prefix we can, so no
+                        #negotiation loop can happen
+                        grasp.tprint("Offering", prefstr(req_plen,pref))
+                        if _cbor:
+                            nobj.value=cbor.dumps(nobj.value)
+                        err,temp,nobj = grasp.negotiate_step(asa_nonce, snonce, nobj, 1000)
+                        grasp.ttprint("Step gave:", err, temp, nobj)
+                        if (not err) and temp==None:
+                            grasp.tprint("Negotiation succeeded") 
+                        elif not err:
+                            #we don't have enough resource, we will reject
+                            insert_pool(req_plen, pref)
+                            endit(snonce, "Insufficient resource")
+                        else:    
+                            #other end rejected or loop count exhausted
+                            insert_pool(req_plen, pref)
+                            if err==grasp.errors.loopExhausted:
+                                # we need to signal the end
+                                endit(snonce, "Loop count exhausted")
+                            else:
+                                grasp.tprint("Failed:", grasp.etext[err])
+                        #end of negotiation 
+                    else:
+                        #got nothing suitable from pool
+                        endit(snonce, "No prefix available")
+            elif req_ipv == 4:
+                if req_plen < 16 or req_plen > 32:
+                    endit(snonce, "Prefix length out of range")
                 else:
-                    #got nothing suitable from pool
-                    endit(snonce, "No prefix available")
+                    pref = get4_from_pool(req_plen)
+                    if pref:
+                        nobj.value = build5254(4, pref[12:], req_plen)
+                        grasp.tprint("Starting negotiation")
+                        #we are offering the shortest prefix we can, so no
+                        #negotiation loop can happen
+                        grasp.tprint("Offering", pref4str(req_plen,pref[12:]))
+                        if _cbor:
+                            nobj.value=cbor.dumps(nobj.value)
+                        err,temp,nobj = grasp.negotiate_step(asa_nonce, snonce, nobj, 1000)
+                        grasp.ttprint("Step gave:", err, temp, nobj)
+                        if (not err) and temp==None:
+                            grasp.tprint("Negotiation succeeded") 
+                        elif not err:
+                            #we don't have enough resource, we will reject
+                            insert_pool(req_plen, pref)
+                            endit(snonce, "Insufficient resource")
+                        else:    
+                            #other end rejected or loop count exhausted
+                            insert_pool(req_plen, pref)
+                            if err==grasp.errors.loopExhausted:
+                                # we need to signal the end
+                                endit(snonce, "Loop count exhausted")
+                            else:
+                                grasp.tprint("Failed:", grasp.etext[err])
+                        #end of negotiation 
+                    else:
+                        #got nothing suitable from pool
+                        endit(snonce, "No prefix available")
             
                 
 #end of a negotiating session
@@ -362,24 +383,24 @@ class delegator(threading.Thread):
 # Functions for prefix manipulation
 ###################################
 
-bytemasks = ['','80','c0','e0','f0','f8','fc','fe','ff']
+
 
 def make_mask(plen):
     """-> bytes object that is a mask of plen bits"""
     
-    mask = bytes.fromhex('')
+    mask = b''
     for i in range(0,plen//8):
-        mask += bytes.fromhex('ff')
-    mask += bytes.fromhex(bytemasks[plen%8])
+        mask += b'\xff'
+    mask += bytemasks[plen%8]
     while len(mask)<16:
-        mask += bytes.fromhex('00')
+        mask += b'\x00'
     return mask    
 
 def mask_prefix(plen,prefix):
     """-> packed prefix masked to length plen"""
 
     m = make_mask(plen)    
-    r = bytes.fromhex('')
+    r = b''
     for i in range(0,16):
         r += bytes([(prefix[i]&m[i])%256])
     return r
@@ -407,13 +428,13 @@ def split_prefix(plen, prefix):
         grasp.tprint("Cannot split prefix", prefstr(plen,prefix)) 
         raise RuntimeError("Unsplittable prefix")
     new_plen = plen + 1
-    new_pref = bytes.fromhex('')
+    new_pref = b''
     j = plen//8
     for i in range(0,j):
         new_pref += bytes([prefix[i]])      
     new_pref += bytes([prefix[j] | bitmasks[new_plen%8]])
     while len(new_pref)<16:
-        new_pref += bytes.fromhex('00')
+        new_pref += b'\x00'
     return new_plen, prefix, new_plen, new_pref
 
 
@@ -433,11 +454,11 @@ def create_pool():
     #would input a prefix from the NOC by some mechanism TBD
     #and would need to save persistent state
     
-    ini_pref = None
+    ini_pref = [32,bytes.fromhex('20010db8000000000000000000000000')]
     try:
-        _ = input("Default IPv6 prefix for pool? Y/N:")
+        _ = input("Choose IPv6 prefix for pool? Y/N:")
         if _[0] == "Y" or _[0] =="y":
-            ini_pref = [32,bytes.fromhex('20010db8000000000000000000000000')]
+            ini_pref = None
     except:
         pass
     if ini_pref == None:
@@ -467,15 +488,19 @@ def create_pool():
     ppool.append(ini_pref)
     pool_lock.release()
 
+    do4 = True
     try:
-        _ = input("Create IPv4 (Net 10) pool? Y/N:")
-        if _[0] == "Y" or _[0] =="y":
-            ini_pref4 = [104,ipaddress.IPv6Address("::ffff:10.0.0.0").packed]
-            pool_lock.acquire()
-            ppool.append(ini_pref4)
-            pool_lock.release()
+        _ = input("Support IPv4? Y/N:")
+        if not (_[0] == "N" or _[0] =="n"):
+            do4 = False
     except:
         pass
+    if do4:
+        ini_pref4 = [104,ipaddress.IPv6Address("::ffff:10.0.0.0").packed]
+        pool_lock.acquire()
+        ppool.append(ini_pref4)
+        pool_lock.release()
+        print("Created IPv4 (Net 10) pool")
     return
 
 mappedpfx = bytes.fromhex('00000000000000000000ffff')
@@ -664,7 +689,7 @@ grasp.tprint("It supports the IP Edge Prefix Management")
 grasp.tprint("objective 'PrefixManager' and its companion")
 grasp.tprint("'PrefixManager.Params', for IPv6 and IPv4.")
 grasp.tprint("")
-grasp.tprint("Supports draft-ietf-cbor-network-addresses-05 rather")
+grasp.tprint("Supports draft-ietf-cbor-network-addresses rather")
 grasp.tprint("than RFC 8992.")
 grasp.tprint("As demonstration code it does not operate in real")
 grasp.tprint("prefix-assigning nodes or perform real assignments.")
@@ -690,6 +715,8 @@ subnet_length = subnet_default
 # Input mode etc. from user
 # If origin, create initial pool
 ####################################
+
+print("Startup dialogue: press Enter for defaults")
 
 try:
     _ = input("Act as origin? Y/N:")
@@ -933,7 +960,11 @@ while True:
                 if snonce:
                     #we got an offer
                     vv, pp, ll = detag5254(answer.value)
-                    if ll < want_p +1:
+                    if not vv:
+                        #bad tag
+                        grasp.end_negotiate(asa_nonce, snonce, False, "Bad tag "+str(ll))
+                        grasp.tprint("Bad tag",ll)                      
+                    elif ll < want_p +1:
                         #acceptable
                         grasp.end_negotiate(asa_nonce, snonce, True)
                         insert_pool(ll, pp)
@@ -978,12 +1009,17 @@ while True:
                 if snonce:
                     #We got an offer. Since this is IPv4,
                     #we take anything we can get!
-                    grasp.end_negotiate(asa_nonce, snonce, True)
+                    
                     vv, pp, ll = detag5254(answer.value)
-                    insert4_pool(ll, mappedpfx+pp)
-                    need = 0
-                    good_peer = peer #cache this one
-                    grasp.tprint("Obtained", pref4str(ll, pp))
+                    if not vv:
+                        grasp.end_negotiate(asa_nonce, snonce, False, "Bad tag "+str(ll))
+                        grasp.tprint("Bad tag", ll)
+                    else:
+                        grasp.end_negotiate(asa_nonce, snonce, True)
+                        insert4_pool(ll, mappedpfx+pp)
+                        need = 0
+                        good_peer = peer #cache this one
+                        grasp.tprint("Obtained", pref4str(ll, pp))
             else:
                 if err == grasp.errors.declined:
                     grasp.tprint("Peer declined:", answer)
