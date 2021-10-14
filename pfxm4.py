@@ -5,7 +5,7 @@
 ########################################################
 # pfxm4 is a demonstration Autonomic Service Agent.
 # It supports the IPv6 Edge Prefix Management
-# objective 'PrefixManager' and its companion
+# objective 'PrefixManagerT' and its companion
 # 'PrefixManager.Params' for IPv6 and IPv4, but NOT as
 # specified in RFC8992. This version uses CBOR tags
 # 52 and 54 as per draft-ietf-cbor-network-addresses
@@ -113,12 +113,12 @@ def build5254(ipv, addr, plen, form = "prefix"):
         if _cborv == 1:
             _tag = cbor.Tag(tag=54)
         else:
-            _tag = cbor.CBORTag(54)
+            _tag = cbor.CBORTag(54, None)
     elif ipv == 4:
         if _cborv == 1:
             _tag = cbor.Tag(tag=52)
         else:
-            _tag = cbor.CBORTag(52)      
+            _tag = cbor.CBORTag(52, None)      
     else:
         return None
     if form == "address":
@@ -686,7 +686,7 @@ grasp.tprint("ASA pfxm4 is starting up.")
 grasp.tprint("==========================")
 grasp.tprint("pfxm4 is a demonstration Autonomic Service Agent.")
 grasp.tprint("It supports the IP Edge Prefix Management")
-grasp.tprint("objective 'PrefixManager' and its companion")
+grasp.tprint("objective 'PrefixManagerT' and its companion")
 grasp.tprint("'PrefixManager.Params', for IPv6 and IPv4.")
 grasp.tprint("")
 grasp.tprint("Supports draft-ietf-cbor-network-addresses rather")
@@ -699,7 +699,7 @@ grasp.tprint("be a nice window showing the negotiation process.")
 grasp.tprint("==========================")
 
 #grasp.test_mode = True # set if you want detailed diagnostics
-time.sleep(8) # so the user can read the text
+
 
 ####################################
 # Set some control variables to default values
@@ -777,7 +777,7 @@ else:
     grasp.tprint("Fatal error:", grasp.etext[_err])
     exit()
     
-obj1 = grasp.objective("PrefixManager")
+obj1 = grasp.objective("PrefixManagerT")
 obj1.loop_count = 4
 obj1.neg = True
 obj1.value = None
@@ -907,7 +907,7 @@ compress().start()
 # whenever pool is low
 ###################################
 
-want_obj = grasp.objective("PrefixManager")
+want_obj = grasp.objective("PrefixManagerT")
 want_obj.neg = True
 
 good_peer = None # where we remember a helpful peer ASA

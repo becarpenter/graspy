@@ -80,7 +80,7 @@
 ########################################################
 ########################################################"""
 
-_version = "RFC8990-BC-20211010"
+_version = "RFC8990-BC-20211014"
 
 ##########################################################
 # The following change log records significant changes,
@@ -232,7 +232,9 @@ _version = "RFC8990-BC-20211010"
 # 20210920 - added "ask" options to skip_dialogue(), removed "quadsing" parameter
 #
 # 20211010 - fixed dependency on CBOR library tag handling
-#          - tuned startup dialogue defaults    
+#          - tuned startup dialogue defaults
+#
+# 20211014 - fixed Linux-only bug in CBORTag usage
 #
 ##########################################################
 
@@ -3100,7 +3102,7 @@ def _ass_obj(x):
             if _cborv == 1:
                 _tag24 = cbor.Tag(tag=24)
             else:
-                _tag24 = cbor.CBORTag(24)
+                _tag24 = cbor.CBORTag(24, None)
             _tag24.value = _val
             _val = _tag24
         except:
