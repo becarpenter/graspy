@@ -80,11 +80,11 @@
 ########################################################
 ########################################################"""
 
-_version = "RFC8990-BC-20211014"
+_version = "RFC8990-BC-20211015"
 
 ##########################################################
 # The following change log records significant changes,
-# not small bug fixes in older versions.
+# not small bug fixes, in older versions.
 
 # Version 05 added proto/port to discovery responses
 
@@ -236,6 +236,8 @@ _version = "RFC8990-BC-20211014"
 #
 # 20211014 - fixed Linux-only bug in CBORTag usage
 #
+# 20211015 - cosmetic improvement in cbor vs cbor2 usage
+#
 ##########################################################
 
 ####################################
@@ -290,13 +292,13 @@ except:
 ###
 try:
     import cbor2 as cbor
-    _cborv = 2
+    from cbor2 import CBORTag
 except:
     print("Could not import cbor2. Will try to import cbor instead.")
     time.sleep(5)
     try:
         import cbor
-        _cborv = 1
+        from cbor import Tag as CBORTag
     except:
         print("Could not import cbor. Please do 'pip3 install cbor2' and try again.")
         time.sleep(10)          
@@ -3099,12 +3101,7 @@ def _ass_obj(x):
         try:
             _ = cbor.loads(_val)
             #seems to be valid CBOR, build Tag 24
-            if _cborv == 1:
-                _tag24 = cbor.Tag(tag=24)
-            else:
-                _tag24 = cbor.CBORTag(24, None)
-            _tag24.value = _val
-            _val = _tag24
+            _val = CBORTag(24, _val)
         except:
             #not valid CBOR, we'll send the raw bytes
             pass

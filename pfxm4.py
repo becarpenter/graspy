@@ -23,10 +23,10 @@ import time
 import datetime
 try:
     import cbor2 as cbor
-    _cborv = 2
+    from cbor2 import CBORTag
 except:
     import cbor
-    _cborv = 1
+    from cbor import Tag as CBORTag
 import ipaddress
 import struct
 import binascii
@@ -109,16 +109,10 @@ bytemasks = [b'\x00',b'\x80',b'\xc0',b'\xe0',b'\xf0',b'\xf8',b'\xfc',b'\xfe',b'\
 
 def build5254(ipv, addr, plen, form = "prefix"):
     """build Tag 52 or 54"""
-    if ipv == 6:
-        if _cborv == 1:
-            _tag = cbor.Tag(tag=54)
-        else:
-            _tag = cbor.CBORTag(54, None)
+    if ipv == 6:        
+        _tag = CBORTag(54, None)
     elif ipv == 4:
-        if _cborv == 1:
-            _tag = cbor.Tag(tag=52)
-        else:
-            _tag = cbor.CBORTag(52, None)      
+        _tag = CBORTag(52, None)      
     else:
         return None
     if form == "address":
