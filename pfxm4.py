@@ -120,6 +120,10 @@ def build5254(ipv, addr, plen, form = "prefix"):
     elif form == "prefix":
         #remove unwanted bytes
         prefix = addr[:math.ceil(plen/8)]
+        #detect covert bits in last byte
+        if plen%8:
+            if prefix[-1] != prefix[-1] & bytemasks[plen%8][0]:
+                raise ValueError('Covert bits in prefix')            
         _tag.value = [plen, prefix]
 
     elif form == "interface":
@@ -139,25 +143,34 @@ def detag5254(x):
             ipv = 4
             asize = 4
         else:
-            return (None, None, 0) #wrong tag
+            raise ValueError('Wrong tag')
         v = x.value
         if tname(v) != 'list':
             #not an array, must be a plain address
+            if tname(v) != 'bytes' or len(v) != asize:
+                raise ValueError('Invalid address in tag')
             return ipv, v, None
         if tname(v[0]) == 'int':
             #must be a prefix spec [plen, address]
-            #fill out the prefix to 16 or 4 bytes
+            #fill out the prefix to 16 or 4 byte
+            plen = v[0]
             prefix = v[1]
-            if prefix[v[0]//8] & bytemasks[v[0]%8][0] != prefix[v[0]//8]:
-                grasp.ttprint(v[0],prefix)
-                return (None, None, 2) #extra bits in prefix
+            if tname(prefix) != 'bytes' or len(prefix) > asize:
+                raise ValueError('Invalid prefix in tag')
+            if plen < asize*8 and plen%8:
+                if prefix[plen//8] & bytemasks[plen%8][0] != prefix[plen//8]:
+                    raise ValueError('Covert bits in prefix')
             while len(prefix) < asize:
                 prefix += b'\x00'
-            return ipv, prefix, v[0]
+            return ipv, prefix, plen
         #must be an interface spec [address, plen]
+        if tname(v[0]) != 'bytes' or len(v[0]) != asize:
+            raise ValueError('Invalid address in tag')
+        if not (v[1] <= asize*8 and v[1] > 0):
+            raise ValueError('Invalid prefix length in tag')
         return(ipv, v[0], v[1])    
     except:
-        return (None, None, 1) #no tag or format error
+        raise #kick any exception up to the user
 
 
 ####################################
