@@ -8,7 +8,7 @@
 # objective 'PrefixManagerT' and its companion
 # 'PrefixManager.Params' for IPv6 and IPv4, but NOT as
 # specified in RFC8992. This version uses CBOR tags
-# 52 and 54 as per draft-ietf-cbor-network-addresses
+# 52 and 54 as per RFC9164
 #
 # As demonstration code it does not operate in real
 # prefix-assigning nodes or perform real prefix assignments.
@@ -696,8 +696,7 @@ grasp.tprint("It supports the IP Edge Prefix Management")
 grasp.tprint("objective 'PrefixManagerT' and its companion")
 grasp.tprint("'PrefixManager.Params', for IPv6 and IPv4.")
 grasp.tprint("")
-grasp.tprint("Supports draft-ietf-cbor-network-addresses rather")
-grasp.tprint("than RFC 8992.")
+grasp.tprint("Supports RFC9164 tags rather than RFC 8992.")
 grasp.tprint("As demonstration code it does not operate in real")
 grasp.tprint("prefix-assigning nodes or perform real assignments.")
 grasp.tprint("")
