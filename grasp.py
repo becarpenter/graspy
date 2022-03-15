@@ -40,7 +40,7 @@
 #
 # Released under the BSD "Revised" License as follows:
 #                                                     
-# Copyright (C) 2015-2021 Brian E. Carpenter.                  
+# Copyright (C) 2015-2022 Brian E. Carpenter.                  
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with
@@ -80,7 +80,7 @@
 ########################################################
 ########################################################"""
 
-_version = "RFC8990-BC-20211015"
+_version = "RFC8990-BC-20220316"
 
 ##########################################################
 # The following change log records significant changes,
@@ -237,6 +237,9 @@ _version = "RFC8990-BC-20211015"
 # 20211014 - fixed Linux-only bug in CBORTag usage
 #
 # 20211015 - cosmetic improvement in cbor vs cbor2 usage
+#
+# 20220316 - fixed grievous bug in O_DIVERT format and other related bugs
+#          - added duplicate detection when storing locator in discovery cache
 #
 ##########################################################
 
@@ -1383,6 +1386,7 @@ def discover(asa_handle, obj, timeout, flush=False, minimum_TTL=-1,
                 dr = _drq.get(block=False)
             msg = dr[2]
             ttprint("Got a discovery response",msg)
+            ttprint(msg.options)
             #ttprint(msg.id_value, disc_sess)
             if (msg.id_value == disc_sess) and (msg.id_source == _sloc):
                 #it belongs here
@@ -1431,7 +1435,7 @@ def _drloop(ifi,ttl,options,rec_obj,obj,inDivert):
     #ttprint("payload", payload)
     for opti in options:
         if opti.otype == O_DIVERT:
-            ttprint("drloop got a Divert option")
+            ttprint("drloop got a Divert option", opti.embedded)
             #recurse on embedded list of options
             _drloop(ifi, ttl, opti.embedded, None, obj, True)
             #ttprint("back from recursion")
@@ -1448,16 +1452,27 @@ def _drloop(ifi,ttl,options,rec_obj,obj,inDivert):
             aloc.protocol = opti.protocol
             aloc.port = opti.port
             aloc.expire = int(time.monotonic() + ttl/1000)
-            found = False
+            _found = False
             _disc_lock.acquire()
             for x in _discovery_cache:
                 if x.objective.name == obj.name:
-                    ttprint("Adding locator to discovery cache")
-                    x.asa_locators.append(aloc)
-                    x.received = rec_obj
-                    found = True
+                    ttprint("Adding locator to discovery cache for",obj.name)
+                    #20220316 - add check for duplicate
+                    _duplicate = False
+                    for existing in x.asa_locators:
+                        if aloc.locator == existing.locator:
+                            #same answer already in cache
+                            _duplicate = True
+                            ttprint("Found duplicate locator in discovery cache for",obj.name)
+                            if aloc.expire > existing.expire:
+                                #fresher reply, prefer it
+                                existing.expire = aloc.expire
+                    if not _duplicate:
+                        x.asa_locators.append(aloc)
+                    x.received = rec_obj #always prefer latest value
+                    _found = True
                     break
-            if not found:
+            if not _found:
                 ttprint("Adding objective to discovery cache")
                 #add entry to discovery cache
                 #but first, check length and garbage collect
@@ -3115,7 +3130,9 @@ def _ass_opt(x):
     if tname(x) == "_option":
         _opt = [x.otype]
         if x.otype == O_DIVERT:
+            ttprint("Assembling O_DIVERT")
             for y in x.embedded:
+                ttprint("Assembling an O_DIVERT locator")
                 _opt.append(_ass_opt(y))
         elif x.otype == O_DECLINE and x.reason:
             _opt.append(x.reason)
@@ -3153,6 +3170,9 @@ def _ass_message(msg_type, session_id, initiator, *whatever):
             #needs to be embedded as a list object
             #ttprint("ass_message Obj value:", x.value)
             msg.append(_ass_obj(x))
+        elif tname(x) == "_option":
+            #some option (e.g. for M_DIVERT)  20220316
+            msg.append(_ass_opt(x))
         elif tname(x) == "list":
             if msg_type == M_FLOOD:
                 for y in x:
@@ -3163,7 +3183,7 @@ def _ass_message(msg_type, session_id, initiator, *whatever):
                 for o in x:
                     msg.append(_ass_opt(o))                  
         elif msg_type in (M_WAIT, M_FLOOD, M_RESPONSE):
-            msg.append(x) # insert timeout
+            msg.append(x) # insert timeout (first time round the for-loop)
         elif msg_type == M_INVALID:
             msg.append(x) # insert arbitrary content
             
@@ -3265,15 +3285,20 @@ def _parse_opt(opt):
             _parse_diag("Invalid O_DIVERT")
             return None 
         else:
+            #ttprint("O_DIVERT length",len(opt))
             #scan through embedded locators inside divert option
             for _raw_opt in opt[_Op_Con:]:
+                #ttprint("Raw option",_raw_opt)
                 eo = _parse_opt(_raw_opt)
+                #ttprint("Parsed option",eo)
                 if eo:
-                    o.embedded.append(eo)               
+                    o.embedded.append(eo)
+                    #ttprint("Added",eo,"in parser")
                 else:
                     _parse_diag("Invalid option inside O_DIVERT")
                     return None
-                return o
+            #20220316 The next line was one tab too far in!
+            return o
     elif opt[_Op_Opt] == O_ACCEPT:
         return o
     elif opt[_Op_Opt] == O_DECLINE:
@@ -3473,8 +3498,15 @@ def _opt_to_asa_loc(opt, ifi, inDivert):
     
     if opt.otype == O_DIVERT:
         alocs = []
-        for opt in opt.embedded:
-            alocs.append(opt, ifi, True)
+        for o in opt.embedded:
+            if o.otype == O_IPv6_LOCATOR:
+                #recursive call for embedded locator
+                alocs += _opt_to_asa_loc(o, ifi, True)            
+            
+#20220316: was complete rubbish: alocs.append(opt, ifi, True)
+#          but no run time error, so never executed due to defect
+#          in _mchandler
+            
         return alocs
     else:
         aloc = asa_locator(None, ifi, inDivert)
@@ -3952,7 +3984,8 @@ class _mchandler(threading.Thread):
                                 #Build Divert option
                                 ttprint("Build Divert option")
                                 _ttl = 0
-                                divo = [O_DIVERT]
+                                #20220316 - fixed failure to use _option class here
+                                divo = _option(O_DIVERT)
                                 for y in ll:
                                     #ttprint("Discovery cache entry", y.is_ipaddress, y.locator, y.ifi, y.expire, int(time.monotonic()))
                                     if y.is_ipaddress:
@@ -3961,13 +3994,13 @@ class _mchandler(threading.Thread):
                                                                        
                                             #build locator option (only supports IPv6, TCP)
                                             lo = [O_IPv6_LOCATOR, y.locator.packed, socket.IPPROTO_TCP, y.port]                                    
-                                            divo.append(lo)
+                                            divo.embedded.append(lo)
                                             if _test_divert:
                                                 break # to avoid duplicates during local testing
                                     elif y.is_fqdn:
-                                        divo.append([O_FQDN_LOCATOR, y.locator, y.protocol, y.port])
+                                        divo.embedded.append([O_FQDN_LOCATOR, y.locator, y.protocol, y.port])
                                     elif y.is_uri:
-                                        divo.append([O_URI_LOCATOR, y.locator])
+                                        divo.embedded.append([O_URI_LOCATOR, y.locator])
                                     #calculate worst case TTL
                                     if y.expire > 0:
                                         if _ttl > 0:
@@ -3977,14 +4010,14 @@ class _mchandler(threading.Thread):
                                     
                                 if _ttl == 0:
                                     _ttl = _discCacheDefTimeOut  
-                                if len(divo)>1:
+                                if len(divo.embedded):
                                     #create TCP socket
                                     sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
                                     sock.settimeout(1) #discovery requester should always be waiting
                                     try:
                                         sock.connect((str(from_addr), from_port,0,from_ifi))
                                         msg_bytes = _ass_message(M_RESPONSE, msg.id_value, msg.id_source,
-                                                                 _ttl, [divo])
+                                                                 _ttl, divo)
                                         sock.sendall(msg_bytes,0)
                                         ttprint("Sent divert response")
                                     except OSError as ex:
