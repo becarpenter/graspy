@@ -58,6 +58,10 @@ insecurely (see graspy.pdf for more).
 
 ## Summary of update history
 
+Status on 2022-03-16
+
+Fixed O_DIVERT generation and handling. It was (incompatibly) wrong before. See divertBug.md for details.
+
 Status on 2021-07-22
 
 Fixed the CBOR Tag 24 handling. It was (incompatibly) wrong before.
