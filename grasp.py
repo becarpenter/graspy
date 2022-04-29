@@ -80,7 +80,7 @@
 ########################################################
 ########################################################"""
 
-_version = "RFC8990-BC-20220316"
+_version = "RFC8990-BC-20220429"
 
 ##########################################################
 # The following change log records significant changes,
@@ -240,6 +240,8 @@ _version = "RFC8990-BC-20220316"
 #
 # 20220316 - fixed grievous bug in O_DIVERT format and other related bugs
 #          - added duplicate detection when storing locator in discovery cache
+#
+# 20220429 - ignore cache entries discovered on same interface 
 #
 ##########################################################
 
@@ -1304,12 +1306,31 @@ def discover(asa_handle, obj, timeout, flush=False, minimum_TTL=-1,
                             del x.asa_locators[j]
                         else:
                             j += 1
-                            
+                       
                     # is there anything to return?                
                     if len(x.asa_locators) > 0:
+                        _found = copy.deepcopy(x.asa_locators)
                         _disc_lock.release()
-                        return errors.ok, x.asa_locators                            
-    _disc_lock.release()
+                        
+                        # 20220429 - ignore cache entries discovered on same interface 
+                        # (RFC8990 section 2.5.4.3 2nd paragraph, last sentence)
+                        
+                        if relay_ifi:
+                            j = 0
+                            while len(_found) > j:
+                                if _found[j].ifi == relay_ifi:
+                                    # Remove the entry
+                                    ttprint("Ignoring LL discovery result", _found[j].locator)
+                                    del _found[j]
+                                else:
+                                    j += 1
+                        
+                        if len(_found) > 0:
+                            return errors.ok, _found                            
+    try:
+        _disc_lock.release()
+    except:
+        pass
 
     # Not already discovered (or flushed), launch discovery session
 
@@ -3671,7 +3692,7 @@ def _relay(payload, msg, ifi):
 #                                                  #
 # NOTE WELL: uses raw payload, as well as parsed   #
 # message, since we send the payload out again in  #
-# the Flood case.                                            #
+# the Flood case.                                  #
 #                                                  #
 # Lazy code: only controls loops using loop count  #
 # and doesn't throttle rate. Note that we must not #
