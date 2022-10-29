@@ -7,5 +7,6 @@ Tutorial: [GRASP-tutorial.pdf](https://github.com/becarpenter/graspdoc/blob/main
 
 Documentation of this code: see [graspy.pdf](./graspy.pdf).
 
-Documentation of some demonstration ASAs is included here as well.
+Documentation of some demonstration ASAs is included here as well. Also, there's a video demonstration of the IP address prefix manager ASA at 
+[https://youtu.be/yJsuLICMvdk](https://youtu.be/yJsuLICMvdk).
 
