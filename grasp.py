@@ -40,7 +40,7 @@
 #
 # Released under the BSD "Revised" License as follows:
 #                                                     
-# Copyright (C) 2015-2022 Brian E. Carpenter.                  
+# Copyright (C) 2015-2023 Brian E. Carpenter.                  
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with
@@ -80,7 +80,7 @@
 ########################################################
 ########################################################"""
 
-_version = "RFC8990-BC-20220429"
+_version = "RFC8990-BC-20230224"
 
 ##########################################################
 # The following change log records significant changes,
@@ -241,7 +241,9 @@ _version = "RFC8990-BC-20220429"
 # 20220316 - fixed grievous bug in O_DIVERT format and other related bugs
 #          - added duplicate detection when storing locator in discovery cache
 #
-# 20220429 - ignore cache entries discovered on same interface 
+# 20220429 - ignore cache entries discovered on same interface
+#
+# 20230224 - parser bug if objective contains no value
 #
 ##########################################################
 
@@ -3282,7 +3284,10 @@ def _parse_obj(obj):
     o = objective(obj[_Ob_Nam]) #name
     o.neg,o.synch,o.dry = _flags(obj[_Ob_Flg])
     o.loop_count = obj[_Ob_LCt]
-    o.value = obj[_Ob_Val]    
+    try:
+        o.value = obj[_Ob_Val]
+    except:
+        o.value = None
     return o        
 
 def _parse_opt(opt):
