@@ -1,0 +1,666 @@
+Probable GRASP Players:
+
+fe80::8d0f:7f26:e5d9:780b
+fd63:45eb:dc14:0:6a25:e384:8462:65f7
+fe80::9463:b62a:bcad:a1e1
+fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7
+
+GRASP Trace:
+
+fe80::8d0f:7f26:e5d9:780b ==> ff02::13
+Message type: 0 = M_NOOP
+Session ID: 0
+
+fe80::8d0f:7f26:e5d9:780b ==> ff02::13
+Message type: 9 = M_FLOOD
+Session ID: 3328429022
+IPv6 Initiator: fd63:45eb:dc14:0:6a25:e384:8462:65f7
+TTL: 59000
+Flood list length: 1
+    Objective: EX1
+        Flags: |Discoverable|Synchronizable
+        Loop count: 4
+        Value: 2023-02-26 21:08 UTC from Briggs
+
+fe80::9463:b62a:bcad:a1e1 ==> ff02::13
+Message type: 0 = M_NOOP
+Session ID: 0
+
+fe80::9463:b62a:bcad:a1e1 ==> ff02::13
+Message type: 1 = M_DISCOVERY
+Session ID: 753551559
+IPv6 Initiator: fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7
+    Objective: EX1
+        Flags: |Discoverable|Synchronizable
+        Loop count: 4
+        Value: None
+
+fe80::9463:b62a:bcad:a1e1 ==> ff02::13
+Message type: 1 = M_DISCOVERY
+Session ID: 2547476007
+IPv6 Initiator: fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7
+    Objective: EX2
+        Flags: |Discoverable|Synchronizable
+        Loop count: 4
+        Value: None
+
+fe80::8d0f:7f26:e5d9:780b ==> fe80::9463:b62a:bcad:a1e1
+Message type: 2 = M_RESPONSE
+Session ID: 2547476007
+IPv6 Initiator: fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7
+TTL: 600000
+    Option: 103 = O_IPv6_LOCATOR
+        Locator: fd63:45eb:dc14:0:6a25:e384:8462:65f7
+            Protocol: 6
+            Port: 52508
+Objective: EX2
+    Flags: |Discoverable|Synchronizable
+    Loop count: 4
+    Value: [1, 'two', 3]
+
+fe80::8d0f:7f26:e5d9:780b ==> fe80::9463:b62a:bcad:a1e1
+Message type: 2 = M_RESPONSE
+Session ID: 2547476007
+IPv6 Initiator: fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7
+TTL: 600000
+    Option: 103 = O_IPv6_LOCATOR
+        Locator: fd63:45eb:dc14:0:6a25:e384:8462:65f7
+            Protocol: 6
+            Port: 52539
+Objective: EX2
+    Flags: |Discoverable|Synchronizable
+    Loop count: 4
+    Value: [1, 'two', 3]
+
+fe80::9463:b62a:bcad:a1e1 ==> ff02::13
+Message type: 1 = M_DISCOVERY
+Session ID: 2837441580
+IPv6 Initiator: fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7
+    Objective: EX1
+        Flags: |Discoverable|Synchronizable
+        Loop count: 4
+        Value: None
+
+fe80::9463:b62a:bcad:a1e1 ==> ff02::13
+Message type: 1 = M_DISCOVERY
+Session ID: 71192043
+IPv6 Initiator: fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7
+    Objective: EX3
+        Flags: |Discoverable|Negotiable|Dry Run
+        Loop count: 9
+        Value: ['NZD', 444]
+
+fe80::8d0f:7f26:e5d9:780b ==> fe80::9463:b62a:bcad:a1e1
+Message type: 2 = M_RESPONSE
+Session ID: 71192043
+IPv6 Initiator: fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7
+TTL: 600000
+    Option: 103 = O_IPv6_LOCATOR
+        Locator: fd63:45eb:dc14:0:6a25:e384:8462:65f7
+            Protocol: 6
+            Port: 52509
+
+fe80::8d0f:7f26:e5d9:780b ==> fe80::9463:b62a:bcad:a1e1
+Message type: 2 = M_RESPONSE
+Session ID: 71192043
+IPv6 Initiator: fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7
+TTL: 600000
+    Option: 103 = O_IPv6_LOCATOR
+        Locator: fd63:45eb:dc14:0:6a25:e384:8462:65f7
+            Protocol: 6
+            Port: 52540
+
+fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7 ==> fd63:45eb:dc14:0:6a25:e384:8462:65f7
+Message type: 3 = M_REQ_NEG
+Session ID: 1418496507
+Objective: EX3
+    Flags: |Discoverable|Negotiable|Dry Run
+    Loop count: 9
+    Value: CBORTag(24, b'\x82cNZD\x19\x01\xbc')
+
+fd63:45eb:dc14:0:6a25:e384:8462:65f7 ==> fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7
+Message type: 5 = M_NEGOTIATE
+Session ID: 1418496507
+Objective: EX3
+    Flags: |Discoverable|Negotiable|Dry Run
+    Loop count: 9
+    Value: CBORTag(24, b'\x82cNZD\x18\xae')
+
+fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7 ==> fd63:45eb:dc14:0:6a25:e384:8462:65f7
+Message type: 5 = M_NEGOTIATE
+Session ID: 1418496507
+Objective: EX3
+    Flags: |Discoverable|Negotiable|Dry Run
+    Loop count: 8
+    Value: CBORTag(24, b'\x82cNZD\x19\x01\x8f')
+
+fd63:45eb:dc14:0:6a25:e384:8462:65f7 ==> fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7
+Message type: 5 = M_NEGOTIATE
+Session ID: 1418496507
+Objective: EX3
+    Flags: |Discoverable|Negotiable|Dry Run
+    Loop count: 7
+    Value: CBORTag(24, b'\x82cNZD\x18\xb8')
+
+fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7 ==> fd63:45eb:dc14:0:6a25:e384:8462:65f7
+Message type: 5 = M_NEGOTIATE
+Session ID: 1418496507
+Objective: EX3
+    Flags: |Discoverable|Negotiable|Dry Run
+    Loop count: 6
+    Value: CBORTag(24, b'\x82cNZD\x19\x01g')
+
+fd63:45eb:dc14:0:6a25:e384:8462:65f7 ==> fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7
+Message type: 7 = M_WAIT
+Session ID: 1418496507
+TTL extension: 17660
+
+fd63:45eb:dc14:0:6a25:e384:8462:65f7 ==> fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7
+Message type: 5 = M_NEGOTIATE
+Session ID: 1418496507
+Objective: EX3
+    Flags: |Discoverable|Negotiable|Dry Run
+    Loop count: 5
+    Value: CBORTag(24, b'\x82cNZD\x18\xc2')
+
+fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7 ==> fd63:45eb:dc14:0:6a25:e384:8462:65f7
+Message type: 5 = M_NEGOTIATE
+Session ID: 1418496507
+Objective: EX3
+    Flags: |Discoverable|Negotiable|Dry Run
+    Loop count: 4
+    Value: CBORTag(24, b'\x82cNZD\x19\x01C')
+
+fd63:45eb:dc14:0:6a25:e384:8462:65f7 ==> fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7
+Message type: 5 = M_NEGOTIATE
+Session ID: 1418496507
+Objective: EX3
+    Flags: |Discoverable|Negotiable|Dry Run
+    Loop count: 3
+    Value: CBORTag(24, b'\x82cNZD\x18\xcc')
+
+fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7 ==> fd63:45eb:dc14:0:6a25:e384:8462:65f7
+Message type: 6 = M_END
+Session ID: 1418496507
+    Option: 102 = O_DECLINE
+        Reason: You are mean!
+
+fe80::8d0f:7f26:e5d9:780b ==> ff02::13
+Message type: 9 = M_FLOOD
+Session ID: 4201398551
+IPv6 Initiator: fd63:45eb:dc14:0:6a25:e384:8462:65f7
+TTL: 59000
+Flood list length: 1
+    Objective: EX1
+        Flags: |Discoverable|Synchronizable
+        Loop count: 4
+        Value: 2023-02-26 21:09 UTC from Briggs
+
+fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7 ==> fd63:45eb:dc14:0:6a25:e384:8462:65f7
+Message type: 3 = M_REQ_NEG
+Session ID: 2738605150
+Objective: EX3
+    Flags: |Discoverable|Negotiable|Dry Run
+    Loop count: 19
+    Value: ['NZD', 68]
+
+fd63:45eb:dc14:0:6a25:e384:8462:65f7 ==> fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7
+Message type: 6 = M_END
+Session ID: 2738605150
+    Option: 101 = O_ACCEPT
+
+fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7 ==> fd63:45eb:dc14:0:6a25:e384:8462:65f7
+Message type: 3 = M_REQ_NEG
+Session ID: 1486102588
+Objective: EX3
+    Flags: |Discoverable|Negotiable
+    Loop count: 20
+    Value: CBORTag(24, b'\x82cNZD\x18\x1a')
+
+fd63:45eb:dc14:0:6a25:e384:8462:65f7 ==> fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7
+Message type: 6 = M_END
+Session ID: 1486102588
+    Option: 101 = O_ACCEPT
+
+fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7 ==> fd63:45eb:dc14:0:6a25:e384:8462:65f7
+Message type: 3 = M_REQ_NEG
+Session ID: 186425193
+Objective: EX3
+    Flags: |Discoverable|Negotiable|Dry Run
+    Loop count: 13
+    Value: ['NZD', 485]
+
+fd63:45eb:dc14:0:6a25:e384:8462:65f7 ==> fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7
+Message type: 5 = M_NEGOTIATE
+Session ID: 186425193
+Objective: EX3
+    Flags: |Discoverable|Negotiable|Dry Run
+    Loop count: 13
+    Value: ['NZD', 178]
+
+fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7 ==> fd63:45eb:dc14:0:6a25:e384:8462:65f7
+Message type: 5 = M_NEGOTIATE
+Session ID: 186425193
+Objective: EX3
+    Flags: |Discoverable|Negotiable|Dry Run
+    Loop count: 12
+    Value: ['NZD', 436]
+
+fd63:45eb:dc14:0:6a25:e384:8462:65f7 ==> fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7
+Message type: 5 = M_NEGOTIATE
+Session ID: 186425193
+Objective: EX3
+    Flags: |Discoverable|Negotiable|Dry Run
+    Loop count: 11
+    Value: ['NZD', 188]
+
+fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7 ==> fd63:45eb:dc14:0:6a25:e384:8462:65f7
+Message type: 5 = M_NEGOTIATE
+Session ID: 186425193
+Objective: EX3
+    Flags: |Discoverable|Negotiable|Dry Run
+    Loop count: 10
+    Value: ['NZD', 392]
+
+fd63:45eb:dc14:0:6a25:e384:8462:65f7 ==> fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7
+Message type: 5 = M_NEGOTIATE
+Session ID: 186425193
+Objective: EX3
+    Flags: |Discoverable|Negotiable|Dry Run
+    Loop count: 9
+    Value: ['NZD', 198]
+
+fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7 ==> fd63:45eb:dc14:0:6a25:e384:8462:65f7
+Message type: 5 = M_NEGOTIATE
+Session ID: 186425193
+Objective: EX3
+    Flags: |Discoverable|Negotiable|Dry Run
+    Loop count: 8
+    Value: ['NZD', 352]
+
+fd63:45eb:dc14:0:6a25:e384:8462:65f7 ==> fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7
+Message type: 7 = M_WAIT
+Session ID: 186425193
+TTL extension: 17940
+
+fe80::8d0f:7f26:e5d9:780b ==> ff02::13
+Message type: 9 = M_FLOOD
+Session ID: 3040805087
+IPv6 Initiator: fd63:45eb:dc14:0:6a25:e384:8462:65f7
+TTL: 59000
+Flood list length: 1
+    Objective: EX1
+        Flags: |Discoverable|Synchronizable
+        Loop count: 4
+        Value: 2023-02-26 21:09 UTC from Briggs
+
+fd63:45eb:dc14:0:6a25:e384:8462:65f7 ==> fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7
+Message type: 5 = M_NEGOTIATE
+Session ID: 186425193
+Objective: EX3
+    Flags: |Discoverable|Negotiable|Dry Run
+    Loop count: 7
+    Value: ['NZD', 208]
+
+fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7 ==> fd63:45eb:dc14:0:6a25:e384:8462:65f7
+Message type: 6 = M_END
+Session ID: 186425193
+    Option: 102 = O_DECLINE
+        Reason: You are mean!
+
+fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7 ==> fd63:45eb:dc14:0:6a25:e384:8462:65f7
+Message type: 3 = M_REQ_NEG
+Session ID: 1893594954
+Objective: EX3
+    Flags: |Discoverable|Negotiable
+    Loop count: 7
+    Value: CBORTag(24, b'\x82cNZD\x18H')
+
+fd63:45eb:dc14:0:6a25:e384:8462:65f7 ==> fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7
+Message type: 6 = M_END
+Session ID: 1893594954
+    Option: 101 = O_ACCEPT
+
+fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7 ==> fd63:45eb:dc14:0:6a25:e384:8462:65f7
+Message type: 3 = M_REQ_NEG
+Session ID: 508550356
+Objective: EX3
+    Flags: |Discoverable|Negotiable
+    Loop count: 17
+    Value: ['NZD', 433]
+
+fd63:45eb:dc14:0:6a25:e384:8462:65f7 ==> fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7
+Message type: 5 = M_NEGOTIATE
+Session ID: 508550356
+Objective: EX3
+    Flags: |Discoverable|Negotiable
+    Loop count: 17
+    Value: ['NZD', 82]
+
+fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7 ==> fd63:45eb:dc14:0:6a25:e384:8462:65f7
+Message type: 5 = M_NEGOTIATE
+Session ID: 508550356
+Objective: EX3
+    Flags: |Discoverable|Negotiable
+    Loop count: 16
+    Value: ['NZD', 389]
+
+fd63:45eb:dc14:0:6a25:e384:8462:65f7 ==> fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7
+Message type: 7 = M_WAIT
+Session ID: 508550356
+TTL extension: 15148
+
+fd63:45eb:dc14:0:6a25:e384:8462:65f7 ==> fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7
+Message type: 5 = M_NEGOTIATE
+Session ID: 508550356
+Objective: EX3
+    Flags: |Discoverable|Negotiable
+    Loop count: 15
+    Value: ['NZD', 92]
+
+fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7 ==> fd63:45eb:dc14:0:6a25:e384:8462:65f7
+Message type: 5 = M_NEGOTIATE
+Session ID: 508550356
+Objective: EX3
+    Flags: |Discoverable|Negotiable
+    Loop count: 14
+    Value: ['NZD', 350]
+
+fd63:45eb:dc14:0:6a25:e384:8462:65f7 ==> fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7
+Message type: 5 = M_NEGOTIATE
+Session ID: 508550356
+Objective: EX3
+    Flags: |Discoverable|Negotiable
+    Loop count: 13
+    Value: ['NZD', 102]
+
+fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7 ==> fd63:45eb:dc14:0:6a25:e384:8462:65f7
+Message type: 5 = M_NEGOTIATE
+Session ID: 508550356
+Objective: EX3
+    Flags: |Discoverable|Negotiable
+    Loop count: 12
+    Value: ['NZD', 315]
+
+fd63:45eb:dc14:0:6a25:e384:8462:65f7 ==> fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7
+Message type: 6 = M_END
+Session ID: 508550356
+    Option: 102 = O_DECLINE
+        Reason: Insufficient funds
+
+fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7 ==> fd63:45eb:dc14:0:6a25:e384:8462:65f7
+Message type: 3 = M_REQ_NEG
+Session ID: 2252079942
+Objective: EX3
+    Flags: |Discoverable|Negotiable
+    Loop count: 6
+    Value: CBORTag(24, b'\x82cUSD\x19\x01;')
+
+fd63:45eb:dc14:0:6a25:e384:8462:65f7 ==> fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7
+Message type: 6 = M_END
+Session ID: 2252079942
+    Option: 102 = O_DECLINE
+        Reason: Invalid currency
+
+fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7 ==> fd63:45eb:dc14:0:6a25:e384:8462:65f7
+Message type: 3 = M_REQ_NEG
+Session ID: 777406769
+Objective: EX3
+    Flags: |Discoverable|Negotiable
+    Loop count: 9
+    Value: CBORTag(24, b'\x82cNZD\x19\x01Z')
+
+fd63:45eb:dc14:0:6a25:e384:8462:65f7 ==> fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7
+Message type: 5 = M_NEGOTIATE
+Session ID: 777406769
+Objective: EX3
+    Flags: |Discoverable|Negotiable
+    Loop count: 9
+    Value: CBORTag(24, b'\x82cNZD\x18\xb3')
+
+fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7 ==> fd63:45eb:dc14:0:6a25:e384:8462:65f7
+Message type: 5 = M_NEGOTIATE
+Session ID: 777406769
+Objective: EX3
+    Flags: |Discoverable|Negotiable
+    Loop count: 8
+    Value: CBORTag(24, b'\x82cNZD\x19\x017')
+
+fd63:45eb:dc14:0:6a25:e384:8462:65f7 ==> fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7
+Message type: 7 = M_WAIT
+Session ID: 777406769
+TTL extension: 16836
+
+fe80::8d0f:7f26:e5d9:780b ==> ff02::13
+Message type: 9 = M_FLOOD
+Session ID: 151629893
+IPv6 Initiator: fd63:45eb:dc14:0:6a25:e384:8462:65f7
+TTL: 59000
+Flood list length: 1
+    Objective: EX1
+        Flags: |Discoverable|Synchronizable
+        Loop count: 4
+        Value: 2023-02-26 21:10 UTC from Briggs
+
+fd63:45eb:dc14:0:6a25:e384:8462:65f7 ==> fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7
+Message type: 5 = M_NEGOTIATE
+Session ID: 777406769
+Objective: EX3
+    Flags: |Discoverable|Negotiable
+    Loop count: 7
+    Value: CBORTag(24, b'\x82cNZD\x18\xbd')
+
+fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7 ==> fd63:45eb:dc14:0:6a25:e384:8462:65f7
+Message type: 5 = M_NEGOTIATE
+Session ID: 777406769
+Objective: EX3
+    Flags: |Discoverable|Negotiable
+    Loop count: 6
+    Value: CBORTag(24, b'\x82cNZD\x19\x01\x17')
+
+fd63:45eb:dc14:0:6a25:e384:8462:65f7 ==> fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7
+Message type: 7 = M_WAIT
+Session ID: 777406769
+TTL extension: 16836
+
+fd63:45eb:dc14:0:6a25:e384:8462:65f7 ==> fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7
+Message type: 5 = M_NEGOTIATE
+Session ID: 777406769
+Objective: EX3
+    Flags: |Discoverable|Negotiable
+    Loop count: 5
+    Value: CBORTag(24, b'\x82cNZD\x18\xc7')
+
+fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7 ==> fd63:45eb:dc14:0:6a25:e384:8462:65f7
+Message type: 5 = M_NEGOTIATE
+Session ID: 777406769
+Objective: EX3
+    Flags: |Discoverable|Negotiable
+    Loop count: 4
+    Value: CBORTag(24, b'\x82cNZD\x18\xfb')
+
+fd63:45eb:dc14:0:6a25:e384:8462:65f7 ==> fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7
+Message type: 7 = M_WAIT
+Session ID: 777406769
+TTL extension: 16836
+
+fe80::8d0f:7f26:e5d9:780b ==> ff02::13
+Message type: 9 = M_FLOOD
+Session ID: 3827050802
+IPv6 Initiator: fd63:45eb:dc14:0:6a25:e384:8462:65f7
+TTL: 59000
+Flood list length: 1
+    Objective: EX1
+        Flags: |Discoverable|Synchronizable
+        Loop count: 4
+        Value: 2023-02-26 21:10 UTC from Briggs
+
+fd63:45eb:dc14:0:6a25:e384:8462:65f7 ==> fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7
+Message type: 5 = M_NEGOTIATE
+Session ID: 777406769
+Objective: EX3
+    Flags: |Discoverable|Negotiable
+    Loop count: 3
+    Value: CBORTag(24, b'\x82cNZD\x18\xd1')
+
+fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7 ==> fd63:45eb:dc14:0:6a25:e384:8462:65f7
+Message type: 6 = M_END
+Session ID: 777406769
+    Option: 102 = O_DECLINE
+        Reason: You are mean!
+
+fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7 ==> fd63:45eb:dc14:0:6a25:e384:8462:65f7
+Message type: 3 = M_REQ_NEG
+Session ID: 3288603168
+Objective: EX3
+    Flags: |Discoverable|Negotiable|Dry Run
+    Loop count: 13
+    Value: ['NZD', 404]
+
+fd63:45eb:dc14:0:6a25:e384:8462:65f7 ==> fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7
+Message type: 5 = M_NEGOTIATE
+Session ID: 3288603168
+Objective: EX3
+    Flags: |Discoverable|Negotiable|Dry Run
+    Loop count: 13
+    Value: ['NZD', 124]
+
+fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7 ==> fd63:45eb:dc14:0:6a25:e384:8462:65f7
+Message type: 5 = M_NEGOTIATE
+Session ID: 3288603168
+Objective: EX3
+    Flags: |Discoverable|Negotiable|Dry Run
+    Loop count: 12
+    Value: ['NZD', 363]
+
+fd63:45eb:dc14:0:6a25:e384:8462:65f7 ==> fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7
+Message type: 5 = M_NEGOTIATE
+Session ID: 3288603168
+Objective: EX3
+    Flags: |Discoverable|Negotiable|Dry Run
+    Loop count: 11
+    Value: ['NZD', 134]
+
+fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7 ==> fd63:45eb:dc14:0:6a25:e384:8462:65f7
+Message type: 5 = M_NEGOTIATE
+Session ID: 3288603168
+Objective: EX3
+    Flags: |Discoverable|Negotiable|Dry Run
+    Loop count: 10
+    Value: ['NZD', 326]
+
+fd63:45eb:dc14:0:6a25:e384:8462:65f7 ==> fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7
+Message type: 7 = M_WAIT
+Session ID: 3288603168
+TTL extension: 17943
+
+fd63:45eb:dc14:0:6a25:e384:8462:65f7 ==> fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7
+Message type: 5 = M_NEGOTIATE
+Session ID: 3288603168
+Objective: EX3
+    Flags: |Discoverable|Negotiable|Dry Run
+    Loop count: 9
+    Value: ['NZD', 144]
+
+fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7 ==> fd63:45eb:dc14:0:6a25:e384:8462:65f7
+Message type: 5 = M_NEGOTIATE
+Session ID: 3288603168
+Objective: EX3
+    Flags: |Discoverable|Negotiable|Dry Run
+    Loop count: 8
+    Value: ['NZD', 293]
+
+fd63:45eb:dc14:0:6a25:e384:8462:65f7 ==> fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7
+Message type: 5 = M_NEGOTIATE
+Session ID: 3288603168
+Objective: EX3
+    Flags: |Discoverable|Negotiable|Dry Run
+    Loop count: 7
+    Value: ['NZD', 154]
+
+fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7 ==> fd63:45eb:dc14:0:6a25:e384:8462:65f7
+Message type: 6 = M_END
+Session ID: 3288603168
+    Option: 102 = O_DECLINE
+        Reason: You are mean!
+
+fe80::9463:b62a:bcad:a1e1 ==> ff02::13
+Message type: 1 = M_DISCOVERY
+Session ID: 1681364901
+IPv6 Initiator: fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7
+    Objective: EX1
+        Flags: |Discoverable|Synchronizable
+        Loop count: 4
+        Value: None
+
+fe80::9463:b62a:bcad:a1e1 ==> ff02::13
+Message type: 1 = M_DISCOVERY
+Session ID: 752704368
+IPv6 Initiator: fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7
+    Objective: EX3
+        Flags: |Discoverable|Negotiable|Dry Run
+        Loop count: 12
+        Value: ['NZD', 300]
+
+fe80::9463:b62a:bcad:a1e1 ==> ff02::13
+Message type: 1 = M_DISCOVERY
+Session ID: 3789250553
+IPv6 Initiator: fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7
+    Objective: EX3
+        Flags: |Discoverable|Negotiable|Dry Run
+        Loop count: 16
+        Value: ['NZD', 389]
+
+fe80::9463:b62a:bcad:a1e1 ==> ff02::13
+Message type: 1 = M_DISCOVERY
+Session ID: 1305683771
+IPv6 Initiator: fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7
+    Objective: EX3
+        Flags: |Discoverable|Negotiable
+        Loop count: 5
+        Value: ['NZD', 384]
+
+fe80::9463:b62a:bcad:a1e1 ==> ff02::13
+Message type: 1 = M_DISCOVERY
+Session ID: 1129487934
+IPv6 Initiator: fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7
+    Objective: EX3
+        Flags: |Discoverable|Negotiable
+        Loop count: 9
+        Value: ['NZD', 26]
+
+fe80::9463:b62a:bcad:a1e1 ==> ff02::13
+Message type: 1 = M_DISCOVERY
+Session ID: 1630167520
+IPv6 Initiator: fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7
+    Objective: EX3
+        Flags: |Discoverable|Negotiable|Dry Run
+        Loop count: 12
+        Value: ['NZD', 429]
+
+fe80::9463:b62a:bcad:a1e1 ==> ff02::13
+Message type: 1 = M_DISCOVERY
+Session ID: 2200447561
+IPv6 Initiator: fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7
+    Objective: EX3
+        Flags: |Discoverable|Negotiable|Dry Run
+        Loop count: 4
+        Value: ['NZD', 382]
+
+fe80::9463:b62a:bcad:a1e1 ==> ff02::13
+Message type: 1 = M_DISCOVERY
+Session ID: 347518156
+IPv6 Initiator: fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7
+    Objective: EX3
+        Flags: |Discoverable|Negotiable|Dry Run
+        Loop count: 19
+        Value: ['NZD', 277]
+
+fe80::9463:b62a:bcad:a1e1 ==> ff02::13
+Message type: 1 = M_DISCOVERY
+Session ID: 1305633031
+IPv6 Initiator: fd63:45eb:dc14:0:1f85:4fed:a0e2:3ae7
+    Objective: EX3
+        Flags: |Discoverable|Negotiable
+        Loop count: 7
+        Value: ['NZD', 233]

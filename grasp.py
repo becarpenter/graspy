@@ -80,7 +80,7 @@
 ########################################################
 ########################################################"""
 
-_version = "RFC8990-BC-20230224"
+_version = "RFC8990-BC-20230226"
 
 ##########################################################
 # The following change log records significant changes,
@@ -244,6 +244,8 @@ _version = "RFC8990-BC-20230224"
 # 20220429 - ignore cache entries discovered on same interface
 #
 # 20230224 - parser bug if objective contains no value
+#
+# 20230226 - missing initialisation (for corner case)
 #
 ##########################################################
 
@@ -4769,6 +4771,7 @@ def _initialise_grasp():
 
 _print_lock = threading.Lock() # printing might be needed before init!
 test_mode = False              # referenced by skip_dialogue(), used by printing
+_mess_check = False            # used by _parse_ functions
 _listen_self = False           # referenced by skip_dialogue()
 DULL = False                   # referenced by skip_dialogue()
 _be_dull = False               # referenced by skip_dialogue()
