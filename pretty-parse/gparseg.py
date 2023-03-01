@@ -125,8 +125,10 @@ def opprint(opt):
         loprint(opt)
         untab()
     elif opt.otype == O_DIVERT:
+        tab()
         for op in opt.embedded:
             opprint(op)
+        untab()
     elif opt.otype == O_ACCEPT:
         pass #no contents
     elif opt.otype == O_DECLINE:
@@ -161,6 +163,12 @@ def untab():
     global ttt
     ttt = ttt[:-4]
 
+def play(new):
+    """Add player if new"""
+    global players
+    if not new in players:
+        players.append(new)
+
 players = []
 
 Tk().withdraw() # we don't want a full GUI
@@ -171,6 +179,7 @@ showinfo(title=T,
 fn = (askopenfilename(title="Select input file", defaultextension=".pcapng"))
 f=open(fn,'rb')
 s=FileScanner(f)
+tprint("Using file", fn)
 trace = []
 for b in s:
     try:
@@ -202,20 +211,15 @@ for i in range(len(trace)):
             if payload.dport == 7017:
                 #Assume M_DISCOVERY or M_FLOOD
                 #print("GRASP multicast from", source)
-                if not source in players:
-                    players.append(source)
+                play(source)
                 #extract the GRASP payload and parse it
                 msg = _parse_msg(cbor.loads(payload.data))
                 if msg.mtype in (M_DISCOVERY, M_FLOOD):
-                    new_sa = ipaddress.IPv6Address(msg.id_source)
-                    if not new_sa in players:
-                        players.append(new_sa)
+                    play(ipaddress.IPv6Address(msg.id_source))
                 if msg.flood_list:
                     for fo in msg.flood_list:
                         if fo.loco and fo.loco.otype == O_IPv6_LOCATOR:
-                            new_lo = ipaddress.IPv6Address(fo.loco.locator)
-                            if not new_lo in players:
-                                players.append(new_lo)
+                            play(ipaddress.IPv6Address(fo.loco.locator))
             else:
                 #some other UDP
                 trace[i] = None
@@ -236,12 +240,19 @@ for i in range(len(trace)):
         if tname(payload) == "TCP":
             if source in players and dest in players:
                 #candidate for M_RESPONSE
-                #extract the GRASP payload and parse it
+                #(if it isn't valid CBOR or doesn't look like M_RESPONSE,
+                #we'll throw an exception)
+                #extract the potential GRASP payload and parse it
                 msg = _parse_msg(cbor.loads(payload.data))
                 if msg.mtype == M_RESPONSE:
-                    new_sa = ipaddress.IPv6Address(msg.id_source)
-                    if not new_sa in players:
-                        players.append(new_sa)            
+                    play(ipaddress.IPv6Address(msg.id_source))
+                    for opt in msg.options:
+                        if opt.otype == O_IPv6_LOCATOR:
+                            play(ipaddress.IPv6Address(opt.locator))
+                        elif opt.otype == O_DIVERT:
+                            for loco in opt.embedded:
+                                if loco.otype  == O_IPv6_LOCATOR:
+                                    play(ipaddress.IPv6Address(loco.locator))
     except:
         trace[i] = None #remove invalid packets
 
@@ -257,11 +268,17 @@ for i in range(len(trace)):
         dest = ipaddress.IPv6Address(packet.dst)
         payload = packet.data
         if tname(payload) == "TCP":
-            if source in players and dest in players:
-                #candidate for GRASP
-                #extract the GRASP payload and parse it
+            if source in players or dest in players:
+                #candidate for GRASP unicast
+                #(if it isn't valid CBOR or doesn't look like GRASP,
+                #we'll throw an exception)
+                #extract the potential GRASP payload and parse it
                 if not cbor.loads(payload.data)[0] in M_s:
                     trace[i] = None #whatever it is, it isn't GRASP
+                else:
+                    #looks like GRASP, maybe add a player
+                    play(source)
+                    play(dest)                
             else:
                 #not a GRASP candidate
                 trace[i] = None
@@ -282,7 +299,7 @@ for i in range(len(trace)):
         else:
             trace[i] = None                      
 
-print("Probable GRASP Players:\n")
+print("\nProbable GRASP Players:\n")
 for p in players:
     print(str(p))
 tprint("\nGRASP Trace:")
