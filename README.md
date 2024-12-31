@@ -58,6 +58,11 @@ insecurely (see graspy.pdf for more).
 
 ## Summary of update history
 
+Status on 2025-01-01
+
+Added `gdaemon.py` to the repo, which is simply a GRASP engine with no ASAs that
+can run on an intermediate node. Should have posted this years ago.
+
 Status on 2022-03-16
 
 Fixed O_DIVERT generation and handling. It was (incompatibly) wrong before. See divertBug.md for details.
