@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+# Updated cbor import 2026-03-06
+
 import time
 _old_API = False
 try:
@@ -16,7 +18,10 @@ except:
         time.sleep(10)
         exit()
 import threading
-import cbor
+try:
+    import cbor2 as cbor
+except:
+    import cbor
 import random
 
 ###################################
@@ -184,6 +189,7 @@ while keep_going:
     if _cbor:
         #CBORise the value
         obj3.value=cbor.dumps(obj3.value)
+        graspi.tprint("Testing Tag 24")
     
     if _old_API:
         err,shandle,answer = graspi.req_negotiate(asa_handle, obj3, ll[0], None)

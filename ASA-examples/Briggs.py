@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+# Updated datetime usage and cbor import 2026-03-06
+
 import time
 _old_API = False
 try:
@@ -17,7 +19,10 @@ except:
         exit()
 import threading
 import datetime
-import cbor
+try:
+    import cbor2 as cbor
+except:
+    import cbor
 import random
 
 ####################################
@@ -33,7 +38,7 @@ class flooder(threading.Thread):
     def run(self):
         while keep_going:
             time.sleep(60)
-            obj1.value = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC from Briggs")
+            obj1.value = datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%d %H:%M UTC from Briggs")
             err = graspi.flood(asa_handle, 59000, [graspi.tagged_objective(obj1,None)])
             if err:
                 graspi.tprint("Flood failure:",graspi.etext[err])
