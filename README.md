@@ -1,7 +1,7 @@
 # graspy
 ## Python 3 demo code for GRASP protocol
 
-This repository is for a Python 3 demonstration implementation of GRASP, the Generic Autonomic Signaling Protocol \[[RFC8990](https://www.rfc-editor.org/info/rfc8990)\] developed in the IETF ANIMA working group, and its API \[[RFC8991](https://www.rfc-editor.org/info/rfc8991)\]. It also contains some demonstration applications. It won't work on Python 2; Python 3.7 or higher is recommended.
+This repository is for a Python 3 demonstration implementation of GRASP, the Generic Autonomic Signaling Protocol \[[RFC8990](https://www.rfc-editor.org/info/rfc8990)\] developed in the IETF ANIMA working group, and its API \[[RFC8991](https://www.rfc-editor.org/info/rfc8991)\]. It also contains some demonstration applications. It won't work on Python 2; Python 3.7 or higher is recommended. Has been shown to work on Python 3.14.
 
 This code IS NOT INTENDED FOR PRODUCTION USE. See the license and disclaimers in the grasp.py source file.
 
@@ -9,7 +9,7 @@ Overview of GRASP: see [GRASP-intro.pdf](https://github.com/becarpenter/graspy/r
 
 Documentation of this code: see [graspy.pdf](https://github.com/becarpenter/graspy/raw/master/documentation/graspy.pdf).
 
-The code was tested only on Windows 7 and 10, Linux and MacOS so far. In theory,
+The code was tested only on Windows 7, 10 and 11, Ubuntu Linux and MacOS so far. In theory,
 the code will work on any host with Winsock2 or Posix compliant TCP/IPv6.
 When testing Autonomic Service Agents (ASAs), run each one in a separate instance of Python 3.
 You might need to be Administrator (Windows) or su (Linux).
@@ -57,6 +57,10 @@ enter a locally chosen domain password, or a null password to run
 insecurely (see graspy.pdf for more).
 
 ## Summary of update history
+
+Status on 2026-03-07
+
+Tested code successfully on Windows 11 and Python3.14
 
 Status on 2025-01-01
 
