@@ -18,8 +18,16 @@ import ipaddress
 import threading
 import time
 import sys
-import cbor
-import dns.resolver
+# Updated cbor and dns import 2026-03-09
+try:
+    import cbor2 as cbor
+except:
+    import cbor
+try:
+    import dns.resolver
+except Exception as e:
+    print("You need to do 'pip install dnspython'")
+    raise(e)
 
 ###################################
 # Constants for building dicts
@@ -80,19 +88,26 @@ def endit(snonce, r):
         grasp.tprint("end_negotiate error:",grasp.etext[err])
     
 
-#resolver = dns.resolver.Resolver()
-#resolver.timeout = 10
-#resolver.lifetime = 10
+
+try:
+    dns.resolver.resolve
+    #must be modern library
+    my_resolve = dns.resolver.resolve
+except:
+    #must be old library
+    my_resolve = dns.resolver.query
+
 
 def resolve(n,q):
     """Resolve a single domain and return the RR"""
     #grasp.tprint(resolver)
     try:
         grasp.ttprint("Resolving",n,q)
-        a = dns.resolver.resolve(n,q)
+        a = my_resolve(n,q)
         grasp.ttprint("Got",a)
         return a
-    except:
+    except Exception as ex:
+        grasp.ttprint("Resolver error:", ex)
         return []
 
 def fix_string(s):
@@ -373,6 +388,7 @@ else:
 
 try:
     dns.resolver.resolve('_printer._sub._http._tcp.dns-sd.org.','PTR')
+    dns.resolver.resolve('_http._tcp.dns-sd.org.','PTR')
 except:
     dns.resolver.default_resolver = dns.resolver.Resolver(configure=False)
     dns.resolver.default_resolver.nameservers = [ '2001:4860:4860::8888',

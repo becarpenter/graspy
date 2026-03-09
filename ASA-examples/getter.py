@@ -42,7 +42,7 @@ def detag(val):
 
 ###################################
 # Function to negotiate as initiator
-# to get DNS records
+# to get file
 ###################################
 
 def get_file(fn):
@@ -54,12 +54,15 @@ def get_file(fn):
     requested_obj.value = fn
     requested_obj.loop_count = 10 #allows for some fragmentation
 
-    #prepare file path for result   
-    try:
-        #strip C:/brian/docs for xfer from Windows to Linux
-        _, fpath = fn.split("C:/brian/docs/")
-    except:
-        fpath = directory+fn
+    #prepare file path for result (fixed 20260309 for Windows)
+    if os.name=="nt":
+        fpath = directory + fn.rsplit("/", maxsplit=1)[1]
+    else:
+        try:
+            #strip C:/brian/docs for xfer from Windows to Linux
+            _, fpath = fn.split("C:/brian/docs/")
+        except:
+            fpath = directory+fn
        
     grasp.tprint("Asking for",requested_obj.value)
     
@@ -184,7 +187,8 @@ grasp.init_bubble_text("getter")
 grasp.tprint("Ready to negotiate", requested_obj.name,"as requester")
 
 if os.name=="nt":
-    directory = "got\\"
+    #fixed 20260309
+    directory = "C:/brian/docs/temp/got/"
 else:
     directory = "got/"
 

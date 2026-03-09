@@ -14,7 +14,11 @@
 
 import grasp
 import time
-import cbor #2 as cbor
+# Updated cbor import 2026-03-09
+try:
+    import cbor2 as cbor
+except:
+    import cbor
 import ipaddress
 
 
