@@ -58,9 +58,10 @@ insecurely (see graspy.pdf for more).
 
 ## Summary of update history
 
-Status on 2026-03-07
+Status on 2026-03-10
 
-Tested code successfully on Windows 11 and Python3.14
+Tested code successfully on Windows 11 and Python3.14. Removed some example ASAs
+that were overtaken by events.
 
 Status on 2025-01-01
 
