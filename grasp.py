@@ -40,7 +40,7 @@
 #
 # Released under the BSD "Revised" License as follows:
 #                                                     
-# Copyright (C) 2015-2023 Brian E. Carpenter.                  
+# Copyright (C) 2015-2026 Brian E. Carpenter.                  
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with
@@ -80,7 +80,7 @@
 ########################################################
 ########################################################"""
 
-_version = "RFC8990-BC-20230226"
+_version = "RFC8990-BC-20260311"
 
 ##########################################################
 # The following change log records significant changes,
@@ -247,6 +247,7 @@ _version = "RFC8990-BC-20230226"
 #
 # 20230226 - missing initialisation (for corner case)
 #
+# 20260311 - tweaked password prompt
 ##########################################################
 
 ####################################
@@ -867,7 +868,7 @@ def _ini_crypt(key=None, iv=None):
     elif not key:
         password = None
         confirm = 1
-        print("Please enter the keying password for the domain.")
+        print("Please enter the keying password for the domain (empty=insecure).")
         while password != confirm:
             password = bytes(getpass.getpass(), 'utf-8')
             confirm = bytes(getpass.getpass("Confirm:" ), 'utf-8')      
