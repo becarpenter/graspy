@@ -1,23 +1,23 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-"""This is some demo code showing how a BRSKI registrar would
-provide its contact details to an ANIMA network using GRASP. The
-actual BRSKI transactions are not included. Flooding
-version, per draft-ietf-anima-bootstrapping-keyinfra-09.
+"""This is some demo code showing how a BRSKI registrar provides
+its contact details to an ANIMA network using GRASP flooding
+per RFC8995.
+The actual BRSKI transactions are not included. 
 """
 
 import sys
-sys.path.insert(0, '..') # in case grasp.py is one level up
-import grasp
+sys.path.insert(0, '..') # in case graspi.py is one level up
+import graspi
 import threading
 import time
 import socket
+#fix very old bug
 try:
     socket.IPPROTO_IPV6
 except:
     socket.IPPROTO_IPV6 = 41
-
 
 ###################################
 # Utility routine for debugging:
@@ -26,14 +26,14 @@ except:
 ###################################
 
 def dump_some():
-    grasp.tprint("Objective registry contents:")         
-    for x in grasp._obj_registry:
+    graspi.tprint("Objective registry contents:")         
+    for x in graspi.grasp._obj_registry:
         o= x.objective
-        grasp.tprint(o.name,"ASA:",x.asa_id,"Listen:",x.listening,"Neg:",o.neg,
+        graspi.tprint(o.name,"ASA:",x.asa_id,"Listen:",x.listening,"Neg:",o.neg,
                "Synch:",o.synch,"Count:",o.loop_count,"Value:",o.value)
-    grasp.tprint("Flood cache contents:")            
-    for x in grasp._flood_cache:
-        grasp.tprint(x.objective.name,"count:",x.objective.loop_count,"value:",
+    graspi.tprint("Flood cache contents:")            
+    for x in graspi.grasp._flood_cache:
+        graspi.tprint(x.objective.name,"count:",x.objective.loop_count,"value:",
                      x.objective.value,"source",x.source.locator, x.source.protocol,
                      x.source.port,"expiry",x.source.expire)
 
@@ -50,36 +50,24 @@ class flooder(threading.Thread):
         while True:
             time.sleep(60)
             reg_obj.value = "EST-TLS"
-            grasp.flood(asa_nonce, 120000,
-                        grasp.tagged_objective(reg_obj,tcp_locator))
+            graspi.flood(asa_nonce, 120000,
+                        graspi.tagged_objective(reg_obj,tcp_locator))
             
-    #not using          grasp.tagged_objective(reg_obj,udp_locator),
-    #not using          grasp.tagged_objective(reg_obj,ipip_locator))
+    #not using          graspi.tagged_objective(reg_obj,udp_locator),
+    #not using          graspi.tagged_objective(reg_obj,ipip_locator))
 
 ###################################
 # Main thread starts here
 ###################################
 
-grasp.tprint("==========================")
-grasp.tprint("ASA Reggie is starting up.")
-grasp.tprint("==========================")
-grasp.tprint("Reggie is a demonstration Autonomic Service Agent.")
-grasp.tprint("It mimics a BRSKI Join Registrar by providing")
-grasp.tprint("the methods it supports, with associated locators,")
-grasp.tprint("as synchronized GRASP objectives.")
-grasp.tprint("Then it pretends to wait for BRSKI traffic.")
-grasp.tprint("This version supports flooding,")
-grasp.tprint("per draft-ietf-anima-bootstrapping-keyinfra-12")
-grasp.tprint("On Windows or Linux, there should soon be")
-grasp.tprint("a nice window that displays the process.")
-grasp.tprint("==========================")
+graspi.tprint("==========================")
+graspi.tprint("ASA Reggie is starting up.")
+graspi.tprint("==========================")
 
+#graspi.test_mode = True # set if you want detailed diagnostics
+time.sleep(2) # time to read the text
 
-
-#grasp.test_mode = True # set if you want detailed diagnostics
-time.sleep(8) # time to read the text
-
-
+graspi.skip_dialogue(selfing=True, be_dull=True)
 
 ####################################
 # Register this ASA
@@ -91,11 +79,11 @@ time.sleep(8) # time to read the text
 # would need different names. For example the name
 # could include a timestamp.
 
-_err, asa_nonce = grasp.register_asa("Reggie")
+_err, asa_nonce = graspi.register_asa("Reggie")
 if not _err:
-    grasp.tprint("ASA Reggie registered OK")
+    graspi.tprint("ASA Reggie registered OK")
 else:
-    grasp.tprint("ASA registration failure:",grasp.etext[_err])
+    graspi.tprint("ASA registration failure:",graspi.etext[_err])
     exit() # demo code doesn't handle registration errors
 
 ####################################
@@ -106,13 +94,13 @@ else:
 
 tcp_port = 80
 tcp_proto = socket.IPPROTO_TCP
-tcp_address = grasp._my_address # current address determined by GRASP kernel
+tcp_address = graspi.grasp._my_address # current address determined by GRASP kernel
 
 ####################################
 # Construct a correponding GRASP ASA locator
 ####################################
 
-tcp_locator = grasp.asa_locator(tcp_address, None, False)
+tcp_locator = graspi.asa_locator(tcp_address, None, False)
 tcp_locator.protocol = tcp_proto
 tcp_locator.port = tcp_port
 tcp_locator.is_ipaddress = True
@@ -125,13 +113,13 @@ tcp_locator.is_ipaddress = True
 
 udp_port = 880
 udp_proto = socket.IPPROTO_UDP
-udp_address = grasp._my_address # current address determined by GRASP kernel
+udp_address = graspi.grasp._my_address # current address determined by GRASP kernel
 
 ####################################
 # Construct a correponding GRASP ASA locator
 ####################################
 
-udp_locator = grasp.asa_locator(udp_address, None, False)
+udp_locator = graspi.asa_locator(udp_address, None, False)
 udp_locator.protocol = udp_proto
 udp_locator.port = udp_port
 udp_locator.is_ipaddress = True
@@ -143,13 +131,13 @@ udp_locator.is_ipaddress = True
 
 ipip_port = 0
 ipip_proto = socket.IPPROTO_IPV6
-ipip_address = grasp._my_address # current address determined by GRASP kernel
+ipip_address = graspi.grasp._my_address # current address determined by GRASP kernel
 
 ####################################
 # Construct a correponding GRASP ASA locator
 ####################################
 
-ipip_locator = grasp.asa_locator(ipip_address, None, False)
+ipip_locator = graspi.asa_locator(ipip_address, None, False)
 ipip_locator.protocol = ipip_proto
 ipip_locator.port = ipip_port
 ipip_locator.is_ipaddress = True
@@ -160,7 +148,7 @@ ipip_locator.is_ipaddress = True
 
 radius = 255    # Limit the radius of flooding
 
-reg_obj = grasp.objective("AN_join_registrar")
+reg_obj = graspi.objective("AN_join_registrar")
 reg_obj.loop_count = radius
 reg_obj.synch = True    # needed for flooding
 reg_obj.value = None
@@ -169,11 +157,11 @@ reg_obj.value = None
 # Register the GRASP objective
 ####################################
 
-_err = grasp.register_obj(asa_nonce,reg_obj)
+_err = graspi.register_obj(asa_nonce,reg_obj)
 if not _err:
-    grasp.tprint("Objective", reg_obj.name, "registered OK")
+    graspi.tprint("Objective", reg_obj.name, "registered OK")
 else:
-    grasp.tprint("Objective registration failure:", grasp.etext[_err])
+    graspi.tprint("Objective registration failure:", graspi.etext[_err])
     exit() # demo code doesn't handle registration errors
 
 
@@ -181,8 +169,8 @@ else:
 # Start pretty printing
 ####################################
 
-grasp.init_bubble_text("BRSKI Join Registrar (flooding method)")
-grasp.tprint("Registrar starting now")
+graspi.init_bubble_text("BRSKI Join Registrar (flooding method)")
+graspi.tprint("Registrar starting now")
 
 ####################################
 # Start flooding thread
@@ -190,7 +178,7 @@ grasp.tprint("Registrar starting now")
 
 
 flooder().start()
-grasp.tprint("Flooding", reg_obj.name, "for ever")
+graspi.tprint("Flooding", reg_obj.name, "for ever")
         
 ###################################
 # Listen for requests
@@ -198,7 +186,7 @@ grasp.tprint("Flooding", reg_obj.name, "for ever")
 
 # Here, launch a thread to do the real work of the registrar
 # via the various ports But for the demo, we just pretend...
-grasp.tprint("Pretending to listen to ports", tcp_port,",", udp_port,
+graspi.tprint("Pretending to listen to ports", tcp_port,",", udp_port,
              "and for IP-in-IP")
     
 
@@ -212,7 +200,7 @@ grasp.tprint("Pretending to listen to ports", tcp_port,",", udp_port,
 
 while True:
     time.sleep(30)
-    grasp.tprint("Registrar main loop diagnostic dump:")
+    graspi.tprint("Registrar main loop diagnostic dump:")
     dump_some()
 
     
