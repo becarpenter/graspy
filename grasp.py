@@ -248,6 +248,8 @@ _version = "RFC8990-BC-20260311"
 # 20230226 - missing initialisation (for corner case)
 #
 # 20260311 - tweaked password prompt
+#
+# 20260810 - missing comma in etext list
 ##########################################################
 
 ####################################
@@ -841,7 +843,7 @@ etext = ["OK",
         "Synchronization peer not listening",
         "No reply to synchronization request",
         "No valid reply to synchronization request",
-        "Invalid locator"
+        "Invalid locator",
         "Socket error sending gmessage"
        ]
 
