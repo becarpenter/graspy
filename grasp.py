@@ -250,6 +250,8 @@ _version = "RFC8990-BC-20260311"
 # 20260311 - tweaked password prompt
 #
 # 20260810 - missing comma in etext list
+#
+# 20260818 - added silent flag to skip_dialogue
 ##########################################################
 
 ####################################
@@ -625,7 +627,7 @@ _skip_dialogue = False     #true if ASA calls grasp.skip_dialogue
 # _make_invalid       #True to throw a test M_INVALID
 # _make_badmess       #True to throw a malformed message
 # _dobubbles          #True to enable bubble printing
-
+# _silent             #True to silence all output
 
 
 ####################################
@@ -941,11 +943,11 @@ def _decrypt_msg(crypt):
 ####################################
 
 def skip_dialogue(testing=False, selfing=False, diagnosing=True,
-                  quadsing=True, be_dull=False):
+                  quadsing=True, be_dull=False, silent=False):
     """
 ####################################################################
 # skip_dialogue(testing=False, selfing=False, diagnosing=True,
-#               be_dull=False)
+#               be_dull=False, silent=False)
 #                                  
 # A utility function that tells GRASP to skip some or all of its
 # initial dialogue. Each parameter may be True, False or the string "ask".
@@ -954,6 +956,7 @@ def skip_dialogue(testing=False, selfing=False, diagnosing=True,
 # not listening to own multicasts
 # printing message syntax diagnostics
 # and not DULL
+# and not silent
 #
 # Must be called before register_asa()
 #
@@ -962,7 +965,8 @@ def skip_dialogue(testing=False, selfing=False, diagnosing=True,
 # The quadsing parameter is obsolete (defined for compatibility)                                 
 ####################################################################
 """
-    global _skip_dialogue, test_mode, _listen_self, _mess_check, _grasp_initialised, DULL, _be_dull
+    global _skip_dialogue, test_mode, _listen_self, _mess_check
+    global _grasp_initialised, DULL, _be_dull, _silent
     if _grasp_initialised:
         return
     _skip_dialogue = True
@@ -970,6 +974,7 @@ def skip_dialogue(testing=False, selfing=False, diagnosing=True,
     _listen_self = selfing
     _mess_check = diagnosing
     _be_dull = be_dull       #too early to set the actual DULL flag
+    _silent = silent
     
 
 
@@ -2699,6 +2704,9 @@ def _hexit(xx):
 def tprint(*whatever,ttp=False):
     """Utility function for thread-safe printing, used exactly like print()"""
 
+    if _silent:
+        return      # all printing suppressed
+    
     #first get the module name
     a,b = str(threading.current_thread()).split('<')
     a,b = b.split('(')  
@@ -4779,6 +4787,7 @@ _listen_self = False           # referenced by skip_dialogue()
 DULL = False                   # referenced by skip_dialogue()
 _be_dull = False               # referenced by skip_dialogue()
 _skip_dialogue = False         # referenced by skip_dialogue()
+_silent = False                # Print by default
 _dobubbles = False             # Don't bubble print by default
 _bubbleQ = queue.Queue(100)    # Will be used if bubble printing
 
