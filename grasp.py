@@ -80,7 +80,7 @@
 ########################################################
 ########################################################"""
 
-_version = "RFC8990-BC-20260311"
+_version = "RFC8990-BC-20260821"
 
 ##########################################################
 # The following change log records significant changes,
@@ -252,6 +252,8 @@ _version = "RFC8990-BC-20260311"
 # 20260810 - missing comma in etext list
 #
 # 20260818 - added silent flag to skip_dialogue
+#
+# 20260821 - added figging flag to skip_dialogue
 ##########################################################
 
 ####################################
@@ -943,7 +945,8 @@ def _decrypt_msg(crypt):
 ####################################
 
 def skip_dialogue(testing=False, selfing=False, diagnosing=True,
-                  quadsing=True, be_dull=False, silent=False):
+                  quadsing=True, be_dull=False, silent=False,
+                  figging=True):
     """
 ####################################################################
 # skip_dialogue(testing=False, selfing=False, diagnosing=True,
@@ -957,7 +960,8 @@ def skip_dialogue(testing=False, selfing=False, diagnosing=True,
 # printing message syntax diagnostics
 # and not DULL
 # and not silent
-#
+# and running Configger
+# 
 # Must be called before register_asa()
 #
 # No return value
@@ -966,7 +970,7 @@ def skip_dialogue(testing=False, selfing=False, diagnosing=True,
 ####################################################################
 """
     global _skip_dialogue, test_mode, _listen_self, _mess_check
-    global _grasp_initialised, DULL, _be_dull, _silent
+    global _grasp_initialised, DULL, _be_dull, _silent, _figging
     if _grasp_initialised:
         return
     _skip_dialogue = True
@@ -975,6 +979,7 @@ def skip_dialogue(testing=False, selfing=False, diagnosing=True,
     _mess_check = diagnosing
     _be_dull = be_dull       #too early to set the actual DULL flag
     _silent = silent
+    _figging = figging
     
 
 
@@ -4767,7 +4772,8 @@ def _initialise_grasp():
     # Start configuration ASA          #
     ####################################
 
-    _figger().start()    
+    if _figging:
+        _figger().start()    
 
     ####################################
     # GRASP initialisation complete!   #
@@ -4788,6 +4794,7 @@ DULL = False                   # referenced by skip_dialogue()
 _be_dull = False               # referenced by skip_dialogue()
 _skip_dialogue = False         # referenced by skip_dialogue()
 _silent = False                # Print by default
+_figging = True                # Run configger by default
 _dobubbles = False             # Don't bubble print by default
 _bubbleQ = queue.Queue(100)    # Will be used if bubble printing
 
