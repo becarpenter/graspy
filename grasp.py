@@ -80,7 +80,7 @@
 ########################################################
 ########################################################"""
 
-_version = "RFC8990-BC-20260821"
+_version = "RFC8990-BC-20260829"
 
 ##########################################################
 # The following change log records significant changes,
@@ -254,6 +254,8 @@ _version = "RFC8990-BC-20260821"
 # 20260818 - added silent flag to skip_dialogue
 #
 # 20260821 - added figging flag to skip_dialogue
+#
+# 20260829 - fixed ancient corner-case in tprint()
 ##########################################################
 
 ####################################
@@ -2713,8 +2715,8 @@ def tprint(*whatever,ttp=False):
         return      # all printing suppressed
     
     #first get the module name
-    a,b = str(threading.current_thread()).split('<')
-    a,b = b.split('(')  
+    a,b = str(threading.current_thread()).split('<',maxsplit=1)
+    a,b = b.split('(',maxsplit=1)  
     _print_lock.acquire()
     #print module name and thread ID
     print(a,threading.get_ident(),end=" ",flush=False)

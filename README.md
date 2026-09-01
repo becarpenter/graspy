@@ -58,6 +58,10 @@ insecurely (see graspy.pdf for more).
 
 ## Summary of update history
 
+Status on 2026-08-29
+
+Fixed ancient corner-case in `tprint`
+
 Status on 2026-08-19
 
 Added `silent` parameter to `skip_dialogue`.
