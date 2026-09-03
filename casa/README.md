@@ -38,6 +38,8 @@ Various standard Python libraries.
 
 Run `casa.py` on a central machine. The first time, it will create a file space for itself, including a log file that will expand for ever. For this proof-of-concept, the log file would serve for audit purposes, and tokens, certificates etc., are stored in the same file space. They are not encrypted (but they should be, in real life). The CASA code is intended to be reasonably robust and if it exits, upon restart it will pick up the latest data from the file space. However, any interrupted transaction will be lost.
 
+Depending on your setup, `casa.py` may need administrator/root privilege.
+
 CASA has a very simple GUI. It will offer periodically to manufacture an APADL (Agent one-time-PAD List, pronounced "a Paddle"). You will need at least one APADL, which is basically an empty USB memory stick. Theoretically, you just plug it in and CASA will do the rest. Then remove the APADL and keep it safe.
 (The APADL should be encrypted in real life.) It may be convenient to copy all 9 of the above Python files onto the stick.
 
