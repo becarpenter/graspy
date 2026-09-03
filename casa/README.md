@@ -59,6 +59,8 @@ To add a pledge to the BRSKI environment, there are several steps.
 
 That's as far as this code goes. It does _not_ support the ACP process at all.
 
+Both `casa.py` and `casa-pledge.py` include optional test modes for debugging purposes. Use with care.
+
 ## File spaces
 
 On Windows, the filespaces used are `C:ProgramData/Temp/casa` and `C:ProgramData/Temp/pledge`. On Unixish systems, they are `/tmp/casa` and `/tmp/pledge`. If you don't like those choices, you'll need to edit one line in `casa_setup.py`
