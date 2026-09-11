@@ -15,6 +15,7 @@ BRSKI registrar, based on RFC8995, RFC8366 and RFC7030.
 # licensed under the MIT license, Copyright (C) 2019 Jukka-Pekka Sarjanen.
 
 # 20260903 First version
+# 20260911 CASA does not need to be DULL
 
 import os
 import sys
@@ -349,7 +350,7 @@ class EST_server(threading.Thread):
     def run(self):
         global asa_handle
         # initialise GRASP instance
-        graspi.skip_dialogue(selfing=True, be_dull=True,
+        graspi.skip_dialogue(selfing=True, ###be_dull=True,
                              silent=True, figging=False)
         # register ASA
         err, asa_handle = graspi.register_asa("CASA registrar")
