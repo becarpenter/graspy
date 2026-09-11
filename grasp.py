@@ -80,7 +80,7 @@
 ########################################################
 ########################################################"""
 
-_version = "RFC8990-BC-20260829"
+_version = "RFC8990-BC-20260912"
 
 ##########################################################
 # The following change log records significant changes,
@@ -251,11 +251,18 @@ _version = "RFC8990-BC-20260829"
 #
 # 20260810 - missing comma in etext list
 #
-# 20260818 - added silent flag to skip_dialogue
+# 20260818 - added silent flag to skip_dialogue (default: False)
 #
-# 20260821 - added figging flag to skip_dialogue
+# 20260821 - added figging flag to skip_dialogue (default: True)
 #
 # 20260829 - fixed ancient corner-case in tprint()
+#
+# 20260910 - added shutdown()
+#
+# 20260912 - resinstated "quadsing" parameter in skip_dialogue (default: True) 
+#          - covered a corner-case in startup option handling
+#          - clarified ACP security status message
+
 ##########################################################
 
 ####################################
@@ -607,10 +614,12 @@ A GRASP option:
 ####################################
 
 _grasp_initialised = False #true after GRASP core has been initialised
+_grasp_shutdown = False    #true when this GRASP instance must shut down
 _skip_dialogue = False     #true if ASA calls grasp.skip_dialogue
 # _tls_required       #true if neither ACP nor QUADS is secure
 # _crypto             #true if QUADS is secure
 # _secure             #true if either ACP or TLS or QUADS is secure
+# _quadsing           #true if QUADS wanted
 # _rapid_supported    #true if rapid mode allowed
 # _mcq                #FIFO for incoming multicasts
 # _drq                #FIFO for pending discovery responses
@@ -952,7 +961,7 @@ def skip_dialogue(testing=False, selfing=False, diagnosing=True,
     """
 ####################################################################
 # skip_dialogue(testing=False, selfing=False, diagnosing=True,
-#               be_dull=False, silent=False)
+#               quadsing=True, be_dull=False, silent=False, figging=True)
 #                                  
 # A utility function that tells GRASP to skip some or all of its
 # initial dialogue. Each parameter may be True, False or the string "ask".
@@ -963,6 +972,7 @@ def skip_dialogue(testing=False, selfing=False, diagnosing=True,
 # and not DULL
 # and not silent
 # and running Configger
+# and activating QUADS if desired
 # 
 # Must be called before register_asa()
 #
@@ -972,7 +982,7 @@ def skip_dialogue(testing=False, selfing=False, diagnosing=True,
 ####################################################################
 """
     global _skip_dialogue, test_mode, _listen_self, _mess_check
-    global _grasp_initialised, DULL, _be_dull, _silent, _figging
+    global _grasp_initialised, DULL, _be_dull, _silent, _figging, _quadsing
     if _grasp_initialised:
         return
     _skip_dialogue = True
@@ -982,6 +992,7 @@ def skip_dialogue(testing=False, selfing=False, diagnosing=True,
     _be_dull = be_dull       #too early to set the actual DULL flag
     _silent = silent
     _figging = figging
+    _quadsing = quadsing
     
 
 
@@ -2423,7 +2434,7 @@ class _synch_listen(threading.Thread):
     def run(self):
         #ttprint("synch_listen Obj in:", self.obj.name,self.obj.value)
         keep_going = True
-        while keep_going:
+        while keep_going and not _grasp_shutdown:
             not_found = True
             _obj_lock.acquire()
             for x in _obj_registry:
@@ -2866,7 +2877,7 @@ def init_bubble_text(cap):
                 tprint("Could not start Tkinter")
                 _looping = False
 
-            while _looping:
+            while _looping and not _grasp_shutdown:
                 
                 # Check print queue unless pausing
                 if _pause <= 0:
@@ -3131,6 +3142,7 @@ def _update_session(session_inst):
 
 
 def _disactivate_session(shandle):
+
     """Internal use only"""
 ####################################
 # Disactivate a Session ID entry   #
@@ -3654,7 +3666,7 @@ class _mclisten(threading.Thread):
         mcrsock.settimeout(120)
 
         tprint("LL multicast listener is up")
-        while True:
+        while not _grasp_shutdown:
             try:
                 ttprint("Listening for LL multicasts")
                 rawmsg, send_addr = mcrsock.recvfrom(_multicast_size)
@@ -3698,6 +3710,8 @@ class _mclisten(threading.Thread):
                             pass
                     #note that unrecognized messages are simply ignored
             except OSError:
+                if _grasp_shutdown:
+                    return
                 tprint("No LL multicasts on interface for 2 minutes")
                 if _mc_restart:
                     # Need to exit and restart if we can
@@ -3772,6 +3786,8 @@ class _disactivate_flood(threading.Thread):
         threading.Thread.__init__(self, daemon=True)
         self.shandle = shandle
     def run(self):
+        if _grasp_shutdown:
+            return
         time.sleep(GRASP_DEF_TIMEOUT/500)
         ttprint("Disactivating flood session")
         _disactivate_session(self.shandle)
@@ -3784,6 +3800,8 @@ class _disc_relay(threading.Thread):
         self.obj = obj
         self.ifi = ifi
     def run(self):
+        if _grasp_shutdown:
+            return
         ttprint("Discovery relay for", self.obj.name, self.obj.loop_count)
         #set timeout to 1s per loop count 20170528
         discover(None, self.obj, _discTimeoutUnit*self.obj.loop_count, relay_ifi=self.ifi, relay_shandle=self.shandle)
@@ -3844,10 +3862,11 @@ class _drlisten(threading.Thread):
         self.sock = sock
         self.ifi = ifi
     def run(self):
-        tprint("Discovery response listener for interface",self.ifi,"is up") 
-        while True:
-            self.sock.listen(5)         
+        tprint("Discovery response listener for interface",self.ifi,"is up")
+        self.sock.settimeout(120)
+        while not _grasp_shutdown:     
             try:
+                self.sock.listen(5)
                 ttprint("Listening for discovery response")
                 asock, aaddr = self.sock.accept()
                 rawmsg, send_addr = _recvraw(asock)
@@ -3884,7 +3903,9 @@ class _drlisten(threading.Thread):
                 except:
                     tprint("Discovery response: CBOR decode error")
             except OSError as ex:
-                tprint("Discovery response socket error", ex)
+                if _grasp_shutdown:
+                    return
+                ttprint("Discovery response socket error", ex)
                 pass     #keep trying anyway
 
 
@@ -3906,7 +3927,7 @@ class _mchandler(threading.Thread):
         global _i_sent_it
         global _multi_asas
         tprint("Multicast queue handler up")
-        while True:
+        while not _grasp_shutdown:
             try:      #this is to catch unknown bug 20190724
                 mc = _mcq.get()
                 ttprint("Multicast handler got something", mc)
@@ -4163,13 +4184,13 @@ class _tcp_listen(threading.Thread):
 
         
         self.listen_sock.listen(5)
-        self.listen_sock.settimeout(None) #listeners will block
+        self.listen_sock.settimeout(120) #listeners will block for 2 minutes, then retry
 
         # For ever, wait for incoming connections and queue them
         # for the listening ASA (if any).
         ttprint("A TCP request listener is up on port", self.listen_sock.getsockname()[1])
         found = True #this will change if objective becomes unregistered
-        while found:
+        while found and not _grasp_shutdown:
             try:
                 asock, aaddr = self.listen_sock.accept()
                 asock.set_inheritable(True)
@@ -4226,7 +4247,9 @@ class _tcp_listen(threading.Thread):
                     tprint("Listener: CBOR decode error")
                     asock.close()
             except OSError as ex:
-                tprint("Request listener socket error", ex)
+                if _grasp_shutdown:
+                    return
+                ttprint("Request listener socket error", ex)
                 pass     #go round again
         #if we get here, the objective has vanished
         ttprint("Listener exiting on port", self.listen_sock.getsockname()[1])
@@ -4258,7 +4281,7 @@ class _watcher(threading.Thread):
         time.sleep(1)
         tprint("ACP watcher is up; thread count:",threading.active_count())
         i=0
-        while True:
+        while True and not _grasp_shutdown:
             _security_check()
             
             time.sleep(10)
@@ -4362,7 +4385,7 @@ class _figger(threading.Thread):
         # Check objective for ever
         ###################################
 
-        while True:
+        while True and not _grasp_shutdown:
             err, objs = get_flood(asa_handle, obj1)
             if err:
                 tprint("Configger get-flood error:", etext[err])
@@ -4481,8 +4504,9 @@ def _initialise_grasp():
     global _print_lock
     global _tls_required
     global _crypto
-    global _secure
+    global _secure, _quadsing
     global DULL, _be_dull
+    global _silent, _figging
     global _rapid_supported
     global _mcq
     global _drq
@@ -4599,12 +4623,21 @@ def _initialise_grasp():
     else:
         DULL = _be_dull
 
+    # Never provide dialogue for certain startup options:
+
+    if _silent == "ask":
+        _silent = False
+    if _figging == "ask":
+        _figging = True
+    if _quadsing == "ask":
+        _quadsing = True
 
 
-    ####################################
-    # Initialise QUADS (unless DULL)   #
-    ####################################
-    if not DULL:
+    ##################################################
+    # Initialise QUADS (unless DULL or not wanted)   #
+    ##################################################
+
+    if (not DULL) or (not _quadsing):
         try:
             import quadsk
             _ini_crypt(key=quadsk.key,iv=quadsk.iv)
@@ -4613,7 +4646,10 @@ def _initialise_grasp():
             _ini_crypt() #No cryptography keys installed
             
     else:
-        tprint("Insecure Discovery Unsolicited Link-Local (DULL) mode")
+        if DULL:
+            tprint("Insecure Discovery Unsolicited Link-Local (DULL) mode")
+        else:
+            tprint("QUADS security not requested")
         
     ####################################
     # Initialise global variables      #
@@ -4676,7 +4712,7 @@ def _initialise_grasp():
     elif _crypto:
         tprint("Security status: QUADS active")
     elif _secure:
-        tprint("Security status: ACP secure")
+        tprint("Security status: unsecured native ACP")
     else:
         tprint("Security status: GRASP is insecure")
                            
@@ -4784,6 +4820,19 @@ def _initialise_grasp():
     time.sleep(2) # to avoid printing glitch    
     tprint("GRASP startup function exiting")
 
+def shutdown():
+    """GRASP shutdown"""
+    global _grasp_shutdown
+    _grasp_shutdown = True
+    min_thread = 2 if "idlelib" in sys.modules else 1      
+    while threading.active_count() > min_thread:
+        print(threading.active_count(), "GRASP threads still active, awaiting timeouts")
+        #print(threading.enumerate())
+        time.sleep(10)
+    print("Goodbye from GRASP")
+    time.sleep(10)
+    
+
 ####################################
 # Create globals needed for initialisation
 ####################################
@@ -4795,6 +4844,7 @@ _listen_self = False           # referenced by skip_dialogue()
 DULL = False                   # referenced by skip_dialogue()
 _be_dull = False               # referenced by skip_dialogue()
 _skip_dialogue = False         # referenced by skip_dialogue()
+_quadsing = True               # QUADS by default (if keys present)
 _silent = False                # Print by default
 _figging = True                # Run configger by default
 _dobubbles = False             # Don't bubble print by default

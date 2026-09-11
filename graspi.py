@@ -58,7 +58,7 @@ _most = ['objective', 'asa_locator', 'tagged_objective',
             'synchronize', 'listen_synchronize', 'stop_synchronize',
             'flood', 'get_flood', 'expire_flood',
             'skip_dialogue', 'tprint', 'ttprint', 'init_bubble_text',
-            'dump_all',
+            'dump_all', 'shutdown',
             'errors', 'etext']
 
 for t in _most:
