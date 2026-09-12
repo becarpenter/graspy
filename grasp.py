@@ -4536,8 +4536,7 @@ def _initialise_grasp():
     #                                  #
     ####################################
     ####################################
-
-
+    
     tprint("WARNING: This is prototype code for the GRASP protocol.")
     tprint("It is unsuitable for operational purposes and relies")
     tprint("on an underlying ACP for security. Use it at your own risk!")
@@ -4566,7 +4565,7 @@ def _initialise_grasp():
 
         if test_mode:
             tprint("Running in test mode.")
-
+    
     if (not _skip_dialogue) or (_mess_check == "ask"):
 
         ####################################
@@ -4604,7 +4603,7 @@ def _initialise_grasp():
 
         if test_mode and not _listen_self:
             tprint("Not listening to own LL multicasts.")
-
+    
     if (not _skip_dialogue) or (_be_dull == "ask"):
 
         ####################################
@@ -4631,13 +4630,12 @@ def _initialise_grasp():
         _figging = True
     if _quadsing == "ask":
         _quadsing = True
-
-
+    
     ##################################################
     # Initialise QUADS (unless DULL or not wanted)   #
     ##################################################
 
-    if (not DULL) or (not _quadsing):
+    if (not DULL) and _quadsing:
         try:
             import quadsk
             _ini_crypt(key=quadsk.key,iv=quadsk.iv)
@@ -4650,7 +4648,7 @@ def _initialise_grasp():
             tprint("Insecure Discovery Unsolicited Link-Local (DULL) mode")
         else:
             tprint("QUADS security not requested")
-        
+       
     ####################################
     # Initialise global variables      #
     #                                  #
