@@ -52,6 +52,10 @@ enter *n* unless you know what you are doing (see graspy.pdf for more).
 
 ## Summary of update history
 
+Status on 2026-09-15
+
+Removed password input option due to new QUADS handling
+
 Status on 2026-08-29
 
 Fixed ancient corner-case in `tprint`
@@ -59,10 +63,6 @@ Fixed ancient corner-case in `tprint`
 Status on 2026-08-19
 
 Added `silent` parameter to `skip_dialogue`.
-
-Status on 2026-09-15
-
-Removed password input option due to new QUADS handling
 
 Status on 2026-03-10
 
