@@ -80,7 +80,7 @@
 ########################################################
 ########################################################"""
 
-_version = "RFC8990-BC-20260912"
+_version = "RFC8990-BC-20260915"
 
 ##########################################################
 # The following change log records significant changes,
@@ -262,7 +262,10 @@ _version = "RFC8990-BC-20260912"
 # 20260912 - resinstated "quadsing" parameter in skip_dialogue (default: True) 
 #          - covered a corner-case in startup option handling
 #          - clarified ACP security status message
-
+#
+# 20260915 - look first for QUADS key in /pledge
+#          - remove password input option
+#
 ##########################################################
 
 ####################################
@@ -876,6 +879,10 @@ _key = 0
 _iv = 0
 _cipher = None
 
+env_path = "C:/ProgramData/Temp" if os.name=="nt" else "/tmp"
+fpath = env_path + "/pledge"
+quadsk_file = fpath + "/quadsk.py"
+
 def _ini_crypt(key=None, iv=None):
     """Internal use only; gets passsword and enables crypto"""
     global _crypto, _key, _iv, _qsalt, _cipher, _cryptography
@@ -883,14 +890,15 @@ def _ini_crypt(key=None, iv=None):
         tprint("Could not import cryptography: GRASP is insecure.")
         return
     elif not key:
-        password = None
-        confirm = 1
-        print("Please enter the keying password for the domain (empty=insecure).")
-        while password != confirm:
-            password = bytes(getpass.getpass(), 'utf-8')
-            confirm = bytes(getpass.getpass("Confirm:" ), 'utf-8')      
-            if password != confirm:
-                print("Mismatch, try again.")
+##        password = None
+##        confirm = 1
+##        print("Please enter the keying password for the domain (empty=insecure).")
+##        while password != confirm:
+##            password = bytes(getpass.getpass(), 'utf-8')
+##            confirm = bytes(getpass.getpass("Confirm:" ), 'utf-8')      
+##            if password != confirm:
+##                print("Mismatch, try again.")
+        password = b''   # remove password input option 20260915
         if password == b'':
             print("Encryption off: GRASP is insecure.")
             return
@@ -4637,6 +4645,8 @@ def _initialise_grasp():
 
     if (not DULL) and _quadsing:
         try:
+            if os.path.exists(quadsk_file):
+                sys.path.append(fpath+"/") # key is stored in /pledge
             import quadsk
             _ini_crypt(key=quadsk.key,iv=quadsk.iv)
         except:

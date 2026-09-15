@@ -13,6 +13,7 @@ of a regular IDevID.
 # All rights reserved.
 
 # 20260903 First version
+# 20260915 Add QUADS key support
 
 import sys
 sys.path.insert(0, '..') # in case graspi.py is one level up
@@ -34,44 +35,9 @@ warnings.filterwarnings("ignore", module="urllib3") # ignore self-signed warning
 
 from casa_setup import *
 
-# set up file names
-
-fpath = env_path + "/pledge"
-key_file = fpath + "/odevid_key.pem"
-cert_file = fpath + "/odevid_cert.pem"
-eec_file = fpath + "/end_entity_cert.pem"
-voucher_file = fpath + "/voucher.json"
-ca_file = fpath + "/cacert.pem"
-domain_cert_file = fpath + "/domain_cert.pem"
-
-# check if ODevID exists
-
-if not os.path.exists(cert_file):
-    crash("No ODevID exists. No action taken")
-
-# check if pledge already registered
-
-yes = input("Test mode (ignores existing voucher) Y/N:")
-if not (yes.startswith("y") or yes.startswith("Y")):
-    if os.path.exists(voucher_file):
-        crash("Voucher already exists.  No action taken.") 
-
-# acquire pledge's own certificate and key
-
-cert_pem_bytes = open(cert_file, "rb").read()
-#key_pem_bytes  = open(key_file, "rb").read()
-
-###################################
-# Map protocols to method names
-###################################
-pm={socket.IPPROTO_UDP: "UDP",
-    socket.IPPROTO_TCP: "TCP",
-    socket.IPPROTO_IPV6: "IPIP"}
-
 ###################################
 # Failure handler
 ###################################
-ok = True
 
 def fail(*msg):
     global ok
@@ -82,7 +48,7 @@ def fail(*msg):
 # HTTP calls
 ###################################
 
-# Thes calls rely on a pre-existing PKI, since
+# These calls rely on a pre-existing PKI, since
 # the ODevID is self-signed and cannot satisfy TLS
 # verification reuqirements
 
@@ -99,10 +65,67 @@ def try_get(url):
         return(requests.get(url, verify=False, timeout=5))
     except Exception as e:
         graspi.tprint("GET fail "+str(e))
-        return(None) 
+        return(None)
+
+###################################
+# Global setup starts here
+###################################
+
+# set up file names
+
+fpath = env_path + "/pledge"
+key_file = fpath + "/odevid_key.pem"
+cert_file = fpath + "/odevid_cert.pem"
+eec_file = fpath + "/end_entity_cert.pem"
+voucher_file = fpath + "/voucher.json"
+ca_file = fpath + "/cacert.pem"
+domain_cert_file = fpath + "/domain_cert.pem"
+quads_key_file = fpath + "/quadsk.py"
+
+# check if ODevID exists
+
+if not os.path.exists(cert_file):
+    crash("No ODevID exists. No action taken")
+
+# check if pledge already registered
+
+voucher_needed = True
+quadsk_needed = True
+voucher_exists = False
+if os.path.exists(voucher_file):
+    voucher_exists = True
+    r = input("Test mode (attempt onboarding despite existing voucher) Y/N:")
+    if not r.lower().startswith("y"):
+        voucher_needed = False
+if os.path.exists(quads_key_file):
+    r = input("QUADS key file exists; overwrite? (Y/N) ")
+    if not r.lower().startswith("y"):
+        quadsk_needed = False
+  
+if (not voucher_needed) and (not quadsk_needed):
+        crash("Voucher and QUADS key already exist.  No action taken.")
+        
+###################################
+# acquire and parse pledge's own certificate
+###################################
+
+cert_pem_bytes = open(cert_file, "rb").read()
+parsed = parse_idevid(cert_pem_bytes)
+
+#key_pem_bytes  = open(key_file, "rb").read() # not needed at present
+
+###################################
+# Map protocols to method names
+###################################
+
+pm={socket.IPPROTO_UDP: "UDP",
+    socket.IPPROTO_TCP: "TCP",
+    socket.IPPROTO_IPV6: "IPIP"}
+
+ok = True       # used by failure handler  
     
 ###################################
-# Main thread starts here
+# Main logic starts here
 ###################################
 
 # Note: silent=True will suppress all GRASP printing
@@ -185,148 +208,191 @@ while not proxy:
     
     graspi.tprint("Preparing to contact proxy")
 
-    # Prepare voucher request
+    if voucher_needed:
 
-    parsed = parse_idevid(cert_pem_bytes)
-    req = {ivrv:
-        {"assertion": "proximity"
-         }}
-    nonce = secrets.token_bytes(nonce_l).hex()
-    req[ivrv]["nonce"] = nonce
-    req[ivrv]["serial-number"] = parsed["serial-number"]
-    req[ivrv]["idevid-issuer"] = parsed["idevid-issuer"]
-    req[ivrv]["created-on"] = timestamp()
-    
-    try:
-    
-        # Get end-entity certficate of registrar, using ODevID credentials
+        # Prepare voucher request
+
+        parsed = parse_idevid(cert_pem_bytes)
+        req = {ivrv:
+            {"assertion": "proximity"
+             }}
+        nonce = secrets.token_bytes(nonce_l).hex()
+        req[ivrv]["nonce"] = nonce
+        req[ivrv]["serial-number"] = parsed["serial-number"]
+        req[ivrv]["idevid-issuer"] = parsed["idevid-issuer"]
+        req[ivrv]["created-on"] = timestamp()
         
-        context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-        context.check_hostname = False       # Disable hostname matching
-        context.load_cert_chain(cert_file, keyfile=key_file)
-        context.verify_mode = ssl.CERT_NONE  # Disable certificate verification
-        s = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
-        s.connect((host, p_port, 0, p_ifi))
-        secure_s = context.wrap_socket(s, server_hostname=host)
-        ee_cert = secure_s.getpeercert(binary_form=True)
-        secure_s.close()
+        try:
+        
+            # Get end-entity certficate of registrar, using ODevID credentials
+            
+            context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+            context.check_hostname = False       # Disable hostname matching
+            context.load_cert_chain(cert_file, keyfile=key_file)
+            context.verify_mode = ssl.CERT_NONE  # Disable certificate verification
+            s = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+            s.connect((host, p_port, 0, p_ifi))
+            secure_s = context.wrap_socket(s, server_hostname=host)
+            ee_cert = secure_s.getpeercert(binary_form=True)
+            secure_s.close()
 
-        graspi.tprint("Obtained end-entity cert")
+            graspi.tprint("Obtained end-entity cert")
 
-        # save end-entity cert in PEM format
-        with open(eec_file, "w") as f:
-            f.write(ssl.DER_cert_to_PEM_cert(ee_cert))
-        ee_cert_bytes = open(eec_file, "rb").read()
+            # save end-entity cert in PEM format
+            with open(eec_file, "w") as f:
+                f.write(ssl.DER_cert_to_PEM_cert(ee_cert))
+            ee_cert_bytes = open(eec_file, "rb").read()
 
-        #ee_cert =b'crap' # uncomment to test mismatch
+            #ee_cert =b'crap' # uncomment to test mismatch
 
-        # Add end-entity cert to voucher request
-        req[ivrv]["proximity-registrar-cert"] = b64e(ee_cert).decode("utf-8")
+            # Add end-entity cert to voucher request
+            req[ivrv]["proximity-registrar-cert"] = b64e(ee_cert).decode("utf-8")
 
-        # Add pledge-cert to voucher request
-        req[ivrv]["pledge-self-cert"] = b64e(cert_pem_bytes).decode("utf-8")
+            # Add pledge-cert to voucher request
+            req[ivrv]["pledge-self-cert"] = b64e(cert_pem_bytes).decode("utf-8")
 
-        # CMS-sign voucher request with ODevID key
+            # CMS-sign voucher request with ODevID key
+
+            signed_req = sign_json(req, cert_file, key_file, fpath)
+            
+            # Prepare HTTP environment
+
+            myhdrs = {"Content-Type": "application/voucher-cms+json"}
+            base_url = "https://["+hostz+"]:"+str(p_port)+"/.well-known/"
+
+            #graspi.tprint("Base URL", base_url)
+
+            # Issue request & process result
+            res = try_post(base_url+"brski/requestvoucher", b64e(signed_req).decode("utf-8"))
+            if res==None:
+                fail("Failure on requestvoucher")
+            elif res.status_code == 200:
+                signed_voucher = b64d(res.content).decode("utf-8")
+                voucher = verify_json(signed_voucher, fpath)
+
+                if not voucher:
+                    fail("Voucher signature fault")
+                elif voucher[ivv]["nonce"] != nonce:
+                    fail("Nonce mismatch")
+                elif voucher[ivv]["serial-number"] != parsed["serial-number"]:
+                    fail("Serial number mismatch")
+                elif voucher[ivv]["assertion"] != "logged":
+                    fail("Not logged")
+                elif not "pinned-domain-cert" in voucher[ivv]:
+                    fail("No domain certificate")
+                else:
+                    graspi.tprint("Voucher appears valid, domain cert included")
+                    #print(voucher[ivv]["pinned-domain-cert"])
+                    dc = voucher[ivv]["pinned-domain-cert"]
+                    dc_bytes = b64d(dc)
+                    # save domain cert in PEM format
+                    with open(domain_cert_file, "w") as f:
+                        f.write(ssl.DER_cert_to_PEM_cert(dc_bytes))
+                if ok:
+                    # save voucher
+                    with open(voucher_file, "w") as f:
+                        f.write(json.dumps(voucher))
+                        voucher_exists = True
+                    
+                    # This is where actions in Section 5.9 of RFC 8995 should go.
+                    # One example...
+                    res2 = try_get(base_url+"est/cacerts")
+                    if (not res2==None) and (res2.status_code == 200):
+                        ca_certs = res2.content.decode("utf-8")
+                        graspi.tprint("CA certs retrieved")
+                        # save CA file in PEM format
+                        with open(ca_file, "w") as f:
+                            f.write(ca_certs)
+                    else:
+                        fail("Failure on cacerts")
+            else:
+                e = res.content.decode("utf-8").split("Message: ")[1].split(".</p>")[0]
+                fail("Request voucher error", res.status_code, e)
+                if e == "Token claim failed" and not quadsk_needed:
+                    crash("Crash exit")
+            # end of voucher request process
+        except Exception as e:
+            # Some network error...
+            graspi.tprint("Network error, expiring that proxy", str(e))
+            graspi.expire_flood(_asa_nonce, proxy)
+            proxy = None  # we'll try all over again
+            continue
+        
+    if quadsk_needed and voucher_exists: # must not request key unless voucher
+
+        # build request for key
+        req = {"request_key": parsed["serial-number"]}
+
+        # CMS-sign request with ODevID key
 
         signed_req = sign_json(req, cert_file, key_file, fpath)
         
         # Prepare HTTP environment
 
-        myhdrs = {"Content-Type": "application/voucher-cms+json"}
+        myhdrs = {"Content-Type": "application/request-cms+json"}
         base_url = "https://["+hostz+"]:"+str(p_port)+"/.well-known/"
 
         #graspi.tprint("Base URL", base_url)
 
         # Issue request & process result
-        res = try_post(base_url+"brski/requestvoucher", b64e(signed_req).decode("utf-8"))
+        res = try_post(base_url+"brski/requestkey", b64e(signed_req).decode("utf-8"))
         if res==None:
-            fail("Failure on requestvoucher")
+            fail("Failure on requestkey")
         elif res.status_code == 200:
-            signed_voucher = b64d(res.content).decode("utf-8")
-            voucher = verify_json(signed_voucher, fpath)
+            signed_key = b64d(res.content).decode("utf-8")
+            key_dict = verify_json(signed_key, fpath)
+            key = b64d(key_dict["key"].encode("utf-8"))
+            iv = b64d(key_dict["iv"].encode("utf-8"))
+            #print("XXX", key, iv)
+            file = open(quads_key_file, "w")
+            file.write("key="+str(key)+"\n")
+            file.write("iv="+str(iv)+"\n")
+            file.close()
+            graspi.tprint("quadsk.py saved OK")
+            quadsk_needed = False
 
-            if not voucher:
-                fail("Voucher signature fault")
-            elif voucher[ivv]["nonce"] != nonce:
-                fail("Nonce mismatch")
-            elif voucher[ivv]["serial-number"] != parsed["serial-number"]:
-                fail("Serial number mismatch")
-            elif voucher[ivv]["assertion"] != "logged":
-                fail("Not logged")
-            elif not "pinned-domain-cert" in voucher[ivv]:
-                fail("No domain certificate")
-            else:
-                graspi.tprint("Voucher appears valid, domain cert included")
-                #print(voucher[ivv]["pinned-domain-cert"])
-                dc = voucher[ivv]["pinned-domain-cert"]
-                dc_bytes = b64d(dc)
-                # save domain cert in PEM format
-                with open(domain_cert_file, "w") as f:
-                    f.write(ssl.DER_cert_to_PEM_cert(dc_bytes))
-            if ok:
-                # save voucher
-                with open(voucher_file, "w") as f:
-                    f.write(json.dumps(voucher))
-                
-                # This is where actions in Section 5.9 of RFC 8995 should go.
-                # One example...
-                res2 = try_get(base_url+"est/cacerts")
-                if (not res2==None) and (res2.status_code == 200):
-                    ca_certs = res2.content.decode("utf-8")
-                    graspi.tprint("CA certs retrieved")
-                    # save CA file in PEM format
-                    with open(ca_file, "w") as f:
-                        f.write(ca_certs)
-                else:
-                    fail("Failure on cacerts")
+    if ok:
+
+        # Test telemetry
+
+        graspi.tprint("Testing telemetry")
+        
+        tel={
+            "version": 1,
+            "status":False,
+            "reason":"Just a test",
+            "reason-context": { "additional" : "JSON" }
+        }
+        res3 = try_post(base_url+"brski/voucher_status", tel)
+        if res3==None:
+            graspi.tprint("Failure on voucher status")
         else:
-            e = res.content.decode("utf-8").split("Message: ")[1].split(".</p>")[0]
-            fail("Request voucher error", res.status_code, e)
-            if e == "Token claim failed":
-                crash(e)
+            graspi.tprint("Voucher Status reply:", res3.status_code)
 
-        if ok:
-
-            # Test telemetry
-
-            graspi.tprint("Testing telemetry")
-            
-            tel={
-                "version": 1,
-                "status":False,
-                "reason":"Just a test",
-                "reason-context": { "additional" : "JSON" }
-            }
-            res3 = try_post(base_url+"brski/voucher_status", tel)
-            if res3==None:
-                graspi.tprint("Failure on voucher status")
-            else:
-                graspi.tprint("Voucher Status reply:", res3.status_code)
-
-            tel={
-                "version": 1,
-                "status":True,
-                "reason":"Just another test",
-                "reason-context": { "additional" : "JSON" }
-            }
-            res4 = try_post(base_url+"brski/enrollstatus", tel)
-            if res4==None:
-                graspi.tprint("Failure on enroll status")
-            else:
-                graspi.tprint("Enroll Status reply:", res4.status_code)  
-            
-        if ok:
-            break  # all good
+        tel={
+            "version": 1,
+            "status":True,
+            "reason":"Just another test",
+            "reason-context": { "additional" : "JSON" }
+        }
+        res4 = try_post(base_url+"brski/enrollstatus", tel)
+        if res4==None:
+            graspi.tprint("Failure on enroll status")
         else:
-            # Failure, tag this proxy as expired.
-            graspi.tprint("Registration failure, expiring that proxy")
-            graspi.expire_flood(_asa_nonce, proxy)
-            proxy = None  # we'll try all over again
-    except Exception as e:
-        # Some network error...
-        graspi.tprint("Network error, expiring that proxy", str(e))
+            graspi.tprint("Enroll Status reply:", res4.status_code)
+           
+    if ok:
+        break  # all good
+    else:
+        # Failure, tag this proxy as expired.
+        graspi.tprint("Registration failure, expiring that proxy")
         graspi.expire_flood(_asa_nonce, proxy)
         proxy = None  # we'll try all over again
+##    except Exception as e:
+##        # Some network error...
+##        graspi.tprint("Network error, expiring that proxy", str(e))
+##        graspi.expire_flood(_asa_nonce, proxy)
+##        proxy = None  # we'll try all over again
 
 graspi.tprint("Success: pledge will exit onboarding code")
 time.sleep(20)

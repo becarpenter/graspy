@@ -17,6 +17,8 @@ BRSKI registrar, based on RFC8995, RFC8366 and RFC7030.
 # 20260903 First version
 # 20260911 CASA does not need to be DULL
 # 20260912 CASA does not want QUADS security
+# 20260914 Add QUADS key support
+# 20260916 Add QUADS key maker
 
 import os
 import sys
@@ -25,6 +27,12 @@ import socket
 import secrets
 import requests
 from requests.utils import DEFAULT_CA_BUNDLE_PATH as pki_cafile
+import getpass
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import padding
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 import time
 import threading
 import atexit
@@ -57,6 +65,9 @@ log_lock = threading.Lock()
 
 allow_any_claim = False
 
+key = None # needs to be a global
+iv = None  # needs to be a global
+
 # set up file names
 
 fpath = env_path + "/casa"
@@ -67,6 +78,7 @@ fnlog = fpath + "/casa_log.txt"
 est_cafile = fpath + "/cacert.pem"
 est_certfile = fpath + "/casacert.pem"
 est_keyfile = fpath + "/casakey.pem"
+quadsk_file = fpath+"/quadsk.py"
 
 
 
@@ -178,6 +190,44 @@ def manufacture_apdl():
         showinfo(title=T, message="No action taken")
         root.update()
 
+def make_quadsk():
+    """Create new QUADS key"""
+    secret_salt = b'\xf4tRj.t\xac\xce\xe1\x89\xf1\xfb\xc1\xc3L\xeb'
+    password = bytes(timestamp(), 'utf-8')
+##    confirm = 1
+##    print("Please enter the keying password for the domain.")
+##    while password != confirm:
+##        password = bytes(getpass.getpass(), 'utf-8')
+##        confirm = bytes(getpass.getpass("Confirm: "), 'utf-8')      
+##        if password != confirm:
+##            print("Mismatch, try again.")
+##
+##    if password == b'':
+##        print("No keys will be generated")
+##    else:
+##        print("Password accepted")
+
+    kdf = PBKDF2HMAC(
+          algorithm=hashes.SHA256(),
+          length=32,
+          salt=secret_salt,
+          iterations=100000,
+          backend=default_backend()
+     )
+
+    backend = default_backend()
+    key = kdf.derive(password)
+    iv =  os.urandom(16)
+
+##    print("key="+str(key))
+##    print("iv="+str(iv))
+
+    file = open(quadsk_file,"w")
+    file.write("key="+str(key)+"\n")
+    file.write("iv="+str(iv)+"\n")
+    file.close()
+    log("quadsk.py created and saved")    
+
 class EstRequestHandler(BaseHTTPRequestHandler):
 
     """Callbacks and handlers for various EST URL's,
@@ -219,6 +269,8 @@ class EstRequestHandler(BaseHTTPRequestHandler):
             self.handle_brski_voucher_status()
         elif path == '/.well-known/brski/enrollstatus':
             self.handle_brski_enrollstatus()
+        elif path == '/.well-known/brski/requestkey':
+            self.handle_brski_req_key()
         else:
             self.send_error(404, message = "No such request")
             
@@ -258,7 +310,6 @@ class EstRequestHandler(BaseHTTPRequestHandler):
         content_length = int(self.headers['Content-Length'])
         req = b64d(self.rfile.read(content_length)).decode("utf-8")
         log(self.path)
-        #pledge_cert = self.request.getpeercert(binary_form=True) #ineffective
         req = verify_json(req, fpath)
         if not req:
             log("JSON malsigned")
@@ -284,7 +335,7 @@ class EstRequestHandler(BaseHTTPRequestHandler):
                            }}
                 signed_voucher = sign_json(vouch, est_certfile,est_keyfile, fpath)
                 # send voucher to pledge
-                response = b64e(signed_voucher) #.decode("utf-8")
+                response = b64e(signed_voucher)
                 self.set_est_rsp_header(len(response))
                 self.wfile.write(response)
             else:
@@ -329,6 +380,48 @@ class EstRequestHandler(BaseHTTPRequestHandler):
             log("Unknown telemetry version")
             self.send_error(404, message="Unknown telemetry version")
 
+    def handle_brski_req_key(self):
+        """draft-carpenter-anima-otp-casa"""
+        global key, iv
+        content_length = int(self.headers['Content-Length'])
+        req = b64d(self.rfile.read(content_length)).decode("utf-8")
+        log(self.path)
+        req = verify_json(req, fpath)
+        if not req:
+            log("JSON malsigned")
+            self.send_error(403, message="JSON malsigned")
+            return   
+        serial = req["request_key"]
+        log(serial+" requests QUADS key")
+        # check pledge is enrolled
+        if not os.path.exists(fpath+"/"+serial+".pem"):
+            log("Pledge not enrolled")
+            self.send_error(403, message="Key request failed")
+            return
+        # retrieve key material
+        # (cannot cache this in case of rekeying)
+        if not os.path.exists(quadsk_file):
+            #create blank key
+            key='No key'
+            iv='No key'
+        else:
+            with open(quadsk_file, "r") as f:
+                text = f.read()
+            exec(text, globals())
+            #print("XXX", key, iv)                
+            key = b64e(key).decode("utf-8")
+            iv  = b64e(iv).decode("utf-8")
+            #pledge must re-decode b64d(x.encode("utf-8"))
+            
+        # create and sign reply
+            reply = {"key": key,
+                     "iv":  iv}                    
+            signed_reply = sign_json(reply, est_certfile,est_keyfile, fpath)
+            # send reply to pledge
+            response = b64e(signed_reply)
+            self.set_est_rsp_header(len(response))
+            self.wfile.write(response)
+
 ######## End of BRSKI POST actions
 
     def set_est_rsp_header(self, data_len):
@@ -351,7 +444,7 @@ class EST_server(threading.Thread):
     def run(self):
         global asa_handle
         # initialise GRASP instance
-        graspi.skip_dialogue(selfing=True, ###be_dull=True,
+        graspi.skip_dialogue(selfing=True, be_dull=True,
                              silent=True, figging=False, quadsing=False)
         # register ASA
         err, asa_handle = graspi.register_asa("CASA registrar")
@@ -480,6 +573,13 @@ else:
 
 shutil.copy(pki_cafile, est_cafile)
 
+# Make a new key?
+
+if askyesno(title=T, message="Make new QUADS key?"):
+    if os.path.exists(quadsk_file):
+        if askyesno(title=T, message="""Sure you want to overwrite existing key?
+All pledges will need rekeying."""):
+            make_quadsk()
 
 # From now on there will be multiple threads so the vault
 # must be protected using vault_lock.
