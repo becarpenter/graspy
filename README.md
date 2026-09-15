@@ -49,12 +49,6 @@ When it asks
 
 enter *n* unless you know what you are doing (see graspy.pdf for more).
 
-When it asks
-
-   *Please enter the keying password for the domain.*
-
-enter a locally chosen domain password, or a null password to run
-insecurely (see graspy.pdf for more).
 
 ## Summary of update history
 
@@ -65,6 +59,10 @@ Fixed ancient corner-case in `tprint`
 Status on 2026-08-19
 
 Added `silent` parameter to `skip_dialogue`.
+
+Status on 2026-09-15
+
+Removed password input option due to new QUADS handling
 
 Status on 2026-03-10
 
