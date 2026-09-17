@@ -80,7 +80,7 @@
 ########################################################
 ########################################################"""
 
-_version = "RFC8990-BC-20260915"
+_version = "RFC8990-BC-20260917"
 
 ##########################################################
 # The following change log records significant changes,
@@ -266,6 +266,7 @@ _version = "RFC8990-BC-20260915"
 # 20260915 - look first for QUADS key in /pledge
 #          - remove password input option
 #
+# 20260915 - shutdown() respects silent flag
 ##########################################################
 
 ####################################
@@ -4834,11 +4835,12 @@ def shutdown():
     _grasp_shutdown = True
     min_thread = 2 if "idlelib" in sys.modules else 1      
     while threading.active_count() > min_thread:
-        print(threading.active_count(), "GRASP threads still active, awaiting timeouts")
-        #print(threading.enumerate())
+        if not _silent:
+            print(threading.active_count(), "GRASP threads still active, awaiting timeouts")
         time.sleep(10)
-    print("Goodbye from GRASP")
-    time.sleep(10)
+    if not _silent:
+        print("GRASP instance will exit")
+        time.sleep(10)
     
 
 ####################################

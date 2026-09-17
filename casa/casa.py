@@ -18,7 +18,7 @@ BRSKI registrar, based on RFC8995, RFC8366 and RFC7030.
 # 20260911 CASA does not need to be DULL
 # 20260912 CASA does not want QUADS security
 # 20260914 Add QUADS key support
-# 20260916 Add QUADS key maker
+# 20260917 Add QUADS key maker
 
 import os
 import sys
@@ -509,6 +509,8 @@ class flooder(threading.Thread):
 ###################################
 # Start of main code
 ###################################
+
+wlabel("CASA registrar")
 
 # Check if vault exists
 

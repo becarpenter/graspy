@@ -7,8 +7,10 @@
 # All rights reserved.
 
 # 20260901 First version
+# 20260917 Added wlabel()
 
 import os
+import sys
 import subprocess
 import time
 from datetime import datetime, timezone
@@ -26,7 +28,7 @@ def crash(msg):
     """Display message for 10s and exit"""
     print(msg)
     time.sleep(10)
-    exit(0)
+    sys.exit()
 
 def shcmd(cmd):
     """Execute shell command and return results"""
@@ -34,6 +36,12 @@ def shcmd(cmd):
     do_cmd = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     _out, _err = do_cmd.communicate()
     return(_err.decode('utf-8').strip(), _out.decode('utf-8').strip())
+
+def wlabel(label):
+    """Label window"""
+    if not "idlelib" in sys.modules:
+        sys.stdout.write(f"\x1b]2;{label}\x07")
+        sys.stdout.flush()
 
 def wf(fn, array):
     """Write bytes array to file"""

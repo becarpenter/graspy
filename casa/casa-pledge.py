@@ -14,9 +14,10 @@ of a regular IDevID.
 
 # 20260903 First version
 # 20260915 Add QUADS key support
+# 20260917 Add daemon start-up
 
 import sys
-sys.path.insert(0, '..') # in case graspi.py is one level up
+sys.path.insert(0, '..') # in case GRASP modules are one level up
 import graspi
 import threading
 import time
@@ -36,13 +37,19 @@ warnings.filterwarnings("ignore", module="urllib3") # ignore self-signed warning
 from casa_setup import *
 
 ###################################
-# Failure handler
+# Failure handlers
 ###################################
 
 def fail(*msg):
     global ok
     ok = False
     graspi.tprint(*msg)
+
+def retry_proxy(e):
+    # Some network error...
+    graspi.tprint("Network error, expiring that proxy", str(e))
+    graspi.expire_flood(_asa_nonce, proxy)
+    proxy = None  # we'll try all over again
 
 ###################################
 # HTTP calls
@@ -70,6 +77,8 @@ def try_get(url):
 ###################################
 # Global setup starts here
 ###################################
+
+wlabel("CASA pledge")
 
 # set up file names
 
@@ -293,6 +302,7 @@ while not proxy:
                     with open(voucher_file, "w") as f:
                         f.write(json.dumps(voucher))
                         voucher_exists = True
+                        voucher_needed = False
                     
                     # This is where actions in Section 5.9 of RFC 8995 should go.
                     # One example...
@@ -312,75 +322,77 @@ while not proxy:
                     crash("Crash exit")
             # end of voucher request process
         except Exception as e:
-            # Some network error...
-            graspi.tprint("Network error, expiring that proxy", str(e))
-            graspi.expire_flood(_asa_nonce, proxy)
-            proxy = None  # we'll try all over again
+            retry_proxy(e)  # we'll try all over again
             continue
         
-    if quadsk_needed and voucher_exists: # must not request key unless voucher
+    if ok and quadsk_needed and voucher_exists: # must have voucher
+        try:
+            # build request for key
+            req = {"request_key": parsed["serial-number"]}
 
-        # build request for key
-        req = {"request_key": parsed["serial-number"]}
+            # CMS-sign request with ODevID key
 
-        # CMS-sign request with ODevID key
+            signed_req = sign_json(req, cert_file, key_file, fpath)
+            
+            # Prepare HTTP environment
 
-        signed_req = sign_json(req, cert_file, key_file, fpath)
-        
-        # Prepare HTTP environment
+            myhdrs = {"Content-Type": "application/request-cms+json"}
+            base_url = "https://["+hostz+"]:"+str(p_port)+"/.well-known/"
 
-        myhdrs = {"Content-Type": "application/request-cms+json"}
-        base_url = "https://["+hostz+"]:"+str(p_port)+"/.well-known/"
+            #graspi.tprint("Base URL", base_url)
 
-        #graspi.tprint("Base URL", base_url)
-
-        # Issue request & process result
-        res = try_post(base_url+"brski/requestkey", b64e(signed_req).decode("utf-8"))
-        if res==None:
-            fail("Failure on requestkey")
-        elif res.status_code == 200:
-            signed_key = b64d(res.content).decode("utf-8")
-            key_dict = verify_json(signed_key, fpath)
-            key = b64d(key_dict["key"].encode("utf-8"))
-            iv = b64d(key_dict["iv"].encode("utf-8"))
-            #print("XXX", key, iv)
-            file = open(quads_key_file, "w")
-            file.write("key="+str(key)+"\n")
-            file.write("iv="+str(iv)+"\n")
-            file.close()
-            graspi.tprint("quadsk.py saved OK")
-            quadsk_needed = False
+            # Issue request & process result
+            res = try_post(base_url+"brski/requestkey", b64e(signed_req).decode("utf-8"))
+            if res==None:
+                fail("Failure on requestkey")
+            elif res.status_code == 200:
+                signed_key = b64d(res.content).decode("utf-8")
+                key_dict = verify_json(signed_key, fpath)
+                key = b64d(key_dict["key"].encode("utf-8"))
+                iv = b64d(key_dict["iv"].encode("utf-8"))
+                #print("XXX", key, iv)
+                file = open(quads_key_file, "w")
+                file.write("key="+str(key)+"\n")
+                file.write("iv="+str(iv)+"\n")
+                file.close()
+                graspi.tprint("quadsk.py saved OK")
+                quadsk_needed = False
+        except Exception as e:
+            retry_proxy(e)  # we'll try all over again
+            continue
 
     if ok:
+        try:
+            # Test telemetry
 
-        # Test telemetry
+            graspi.tprint("Testing telemetry")
+            
+            tel={
+                "version": 1,
+                "status":True,
+                "reason":"Just a test",
+                "reason-context": { "additional" : "JSON" }
+            }
+            res3 = try_post(base_url+"brski/voucher_status", tel)
+            if res3==None:
+                graspi.tprint("Failure on voucher status")
+            else:
+                graspi.tprint("Voucher Status reply:", res3.status_code)
 
-        graspi.tprint("Testing telemetry")
-        
-        tel={
-            "version": 1,
-            "status":False,
-            "reason":"Just a test",
-            "reason-context": { "additional" : "JSON" }
-        }
-        res3 = try_post(base_url+"brski/voucher_status", tel)
-        if res3==None:
-            graspi.tprint("Failure on voucher status")
-        else:
-            graspi.tprint("Voucher Status reply:", res3.status_code)
-
-        tel={
-            "version": 1,
-            "status":True,
-            "reason":"Just another test",
-            "reason-context": { "additional" : "JSON" }
-        }
-        res4 = try_post(base_url+"brski/enrollstatus", tel)
-        if res4==None:
-            graspi.tprint("Failure on enroll status")
-        else:
-            graspi.tprint("Enroll Status reply:", res4.status_code)
-           
+            tel={
+                "version": 1,
+                "status":True,
+                "reason":"Just another test",
+                "reason-context": { "additional" : "JSON" }
+            }
+            res4 = try_post(base_url+"brski/enrollstatus", tel)
+            if res4==None:
+                graspi.tprint("Failure on enroll status")
+            else:
+                graspi.tprint("Enroll Status reply:", res4.status_code)
+        except Exception as e:
+            graspi.tprint("Telemetry failure", str(e))
+                     
     if ok:
         break  # all good
     else:
@@ -388,13 +400,31 @@ while not proxy:
         graspi.tprint("Registration failure, expiring that proxy")
         graspi.expire_flood(_asa_nonce, proxy)
         proxy = None  # we'll try all over again
-##    except Exception as e:
-##        # Some network error...
-##        graspi.tprint("Network error, expiring that proxy", str(e))
-##        graspi.expire_flood(_asa_nonce, proxy)
-##        proxy = None  # we'll try all over again
 
-graspi.tprint("Success: pledge will exit onboarding code")
-time.sleep(20)
+
+graspi.tprint("Success: pledge exits onboarding code")
+
+if len(graspi.grasp._ll_zone_ids) > 1:
+    graspi.tprint("This is a relay node")
+    graspi.tprint("Will launch GRASP daemon after timeouts")
+
+    graspi.shutdown()  # close current DULL GRASP instance
+    del graspi.grasp   # refresh GRASP context
+    del graspi
+    del sys.modules['grasp']
+    del sys.modules['graspi']
+    import graspi
+    # Start GRASP daemon without dialogue
+    graspi.skip_dialogue(selfing=True, figging=False) #, silent=True)
+    graspi.grasp._initialise_grasp()
+    print("GRASP daemon running")
+    wlabel("GRASP daemon")
+
+    while True:
+        time.sleep(60)    
+       
+graspi.tprint("Not a relay node, will exit in 1 minute")
+time.sleep(60)
+sys.exit()
 
 

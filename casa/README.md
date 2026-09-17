@@ -43,7 +43,7 @@ Depending on your setup, `casa.py` may need administrator/root privilege.
 CASA has a very simple GUI. It will offer periodically to manufacture an APADL (Agent one-time-PAD List, pronounced "a Paddle"). You will need at least one APADL, which is basically an empty USB memory stick. Theoretically, you just plug it in and CASA will do the rest. Then remove the APADL and keep it safe.
 (The APADL should be encrypted in real life.) It may be convenient to copy all 9 of the above Python files onto the stick.
 
-Run `casa-proxy.py` on relevant routers, i.e. the routers in the
+Run `casa-proxy.py` on relevant nodes, i.e. the routers in the
 [Autonomic Control Plane (ACP)](https://www.rfc-editor.org/info/rfc8994).
 It needs to run forever, but it stores no state and could be restarted any time.
 
@@ -57,7 +57,11 @@ To add a pledge to the BRSKI environment, there are several steps.
 
 4. Run `casa-pledge.py` on the pledge. It will execute (an approximation to) the BRSKI process, which will allow the pledge to onboard itself almost as though it had a genuine manufacturer-installed IDevID.
 
-That's as far as this code goes. It does _not_ support the ACP process at all.
+It will also use EST as described in version 04 and later of [draft-carpenter-anima-quads-grasp](https://datatracker.ietf.org/doc/draft-carpenter-anima-quads-grasp), in order to securely obtain
+key material for QUADS (QUick And Dirty Security for GRASP), which provides encryption of all GRASP
+messages.
+
+That's as far as this code goes. It does _not_ support the RFC 8994 ACP process at all.
 
 Both `casa.py` and `casa-pledge.py` include optional test modes for debugging purposes. Use with care.
 

@@ -14,6 +14,7 @@ It then proxies the BRSKI HTTPS/TLS/TCP transactions.
 
 # 20260902 First version
 # 20260912 Updated misleading comment
+# 20260917 Label window
 
 import sys
 sys.path.insert(0, '..') # in case graspi.py is one level up
@@ -174,6 +175,10 @@ def kill_proxies(msg):
 ###################################
 # Main thread starts here
 ###################################
+
+if not "idlelib" in sys.modules:
+    sys.stdout.write(f"\x1b]2;{"CASA proxy"}\x07") #Label window
+    sys.stdout.flush()
 
 # Note: silent=True would suppress all GRASP printing
 graspi.skip_dialogue(selfing=True, be_dull=True, figging=False) #, silent=True)

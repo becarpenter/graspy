@@ -1,37 +1,25 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 
-"""########################################################
-########################################################
-#                                                     
-# GREMLIN: the GRASP daemon       
-#                                                                            
-# This module is for use in a node that can relay GRASP
-# but is not running any ASA
-#                                                     
-# Because it's demonstration code written in an       
-# interpreted language, performance is slow.          
-#                                                     
-# SECURITY WARNINGS:                                  
-#  - assumes ACP up on all interfaces (or none)       
-#  - assumes BUT DOES NOT CHECK that layer 2 is secured           
-#  - does not watch for interface up/down changes
-#    (but does handle IPv6 address changes)
-#                                                     
-# LIMITATIONS:                                        
-#  - only coded for IPv6, any IPv4 is accidental
-#  - survival of address changes and CPU sleep/wakeup is patchy          
-#  - workarounds for defects in Python socket module and
-#    Windows socket peculiarities. Not tested on Android.
-#
-# See grasp.py for license, copyright, and disclaimer.                        
-#                                                     
-########################################################
-########################################################"""
+"""This is a GRASP daemon, intended to run indefinitely in
+a GRASP node with several interfaces, to perform GRASP relaying.
+User dialogue required.
+"""
 
-import grasp
+# Released under the BSD "Revised" License.
+#                                                     
+# Copyright (C) 2026 Brian E. Carpenter.                  
+# All rights reserved.
+
+import graspi  #needs to be in python path
 import time
+import sys
 print("Starting GRASP daemon")
-grasp._initialise_grasp()
-grasp.init_bubble_text("GRASP daemon")
-grasp.tprint("Daemon running")
+graspi.grasp._initialise_grasp()
+graspi.init_bubble_text("GRASP daemon")
+graspi.tprint("Daemon running")
+if not "idlelib" in sys.modules:
+    sys.stdout.write(f"\x1b]2;{"GRASP daemon"}\x07") #Label window
+    sys.stdout.flush()
 while True:
     time.sleep(60)
