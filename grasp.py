@@ -80,7 +80,7 @@
 ########################################################
 ########################################################"""
 
-_version = "RFC8990-BC-20260917"
+_version = "RFC8990-BC-20260923"
 
 ##########################################################
 # The following change log records significant changes,
@@ -267,6 +267,13 @@ _version = "RFC8990-BC-20260917"
 #          - remove password input option
 #
 # 20260915 - shutdown() respects silent flag
+#
+# 20260921 - fix bug in M_FLOOD when locator is link-local and
+#            there are multiple LL interfaces
+#          - suppress warnings due to QUADS coexistence
+#          - update Linux path to QUADS key
+#
+# 20260923 - tweaked test mode printing in shutdown()
 ##########################################################
 
 ####################################
@@ -311,6 +318,7 @@ import random
 import binascii
 import copy
 import traceback
+from pathlib import Path
 ### for bubbles
 try:
     import tkinter as tk
@@ -880,7 +888,7 @@ _key = 0
 _iv = 0
 _cipher = None
 
-env_path = "C:/ProgramData/Temp" if os.name=="nt" else "/tmp"
+env_path = "C:/ProgramData/Temp" if os.name=="nt" else str(Path.home())
 fpath = env_path + "/pledge"
 quadsk_file = fpath + "/quadsk.py"
 
@@ -2626,7 +2634,7 @@ def flood(asa_handle, ttl, *tagged_obj):
         for _o in _floodl:
             _l = _o[1]
             if _l != []:
-                if _l[1] == _unspec_address.packed:
+                if _l[1] == _unspec_address.packed or ipaddress.IPv6Address(_l[1]).is_link_local:
                     _l[1] = _ll_zone_ids[i][1].packed # replace with LL address
         msg_bytes = _ass_message(M_FLOOD, flood_session, _session_locator.packed, ttl, _floodl)
         try:
@@ -3423,7 +3431,9 @@ def _parse_msg(payload):
 # format, after CBOR decoding. Parse it.
 #########################################
     if tname(payload) != 'list':
-        _parse_diag("Message is not a list")
+        if test_mode:
+            #This happens often due to QUADS 
+            _parse_diag("Message is not a list")
         return None #not a list
     elif not len(payload):
         _parse_diag("Message is empty")
@@ -4837,6 +4847,8 @@ def shutdown():
     while threading.active_count() > min_thread:
         if not _silent:
             print(threading.active_count(), "GRASP threads still active, awaiting timeouts")
+            if test_mode:
+                print(threading.enumerate())
         time.sleep(10)
     if not _silent:
         print("GRASP instance will exit")

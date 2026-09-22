@@ -15,6 +15,8 @@ of a regular IDevID.
 # 20260903 First version
 # 20260915 Add QUADS key support
 # 20260917 Add daemon start-up
+# 20260921 Fix bug in retry_proxy()
+# 20260922 Deregister ASA before shutdown()
 
 import sys
 sys.path.insert(0, '..') # in case GRASP modules are one level up
@@ -46,9 +48,9 @@ def fail(*msg):
     graspi.tprint(*msg)
 
 def retry_proxy(e):
-    # Some network error...
+    global proxy
     graspi.tprint("Network error, expiring that proxy", str(e))
-    graspi.expire_flood(_asa_nonce, proxy)
+    graspi.expire_flood(_asa_handle, proxy)
     proxy = None  # we'll try all over again
 
 ###################################
@@ -149,7 +151,7 @@ graspi.tprint("CASA pledge is starting up.")
 # The ASA name is arbitrary - it just needs to be
 # unique in the GRASP instance.
 
-_err,_asa_nonce = graspi.register_asa("CASA-pledge")
+_err,_asa_handle = graspi.register_asa("CASA-pledge")
 if not _err:
     graspi.tprint("CASA-pledge registered OK")
 else:
@@ -177,7 +179,7 @@ proxy = None
 while not proxy:
     graspi.tprint("Waiting for proxy")
     time.sleep(20)   # arbitrary wait
-    err, results = graspi.get_flood(_asa_nonce, proxy_obj)
+    err, results = graspi.get_flood(_asa_handle, proxy_obj)
     if (not err) and len(results):
         # results contains all the unexpired tagged objectives
         graspi.tprint("Found",len(results),"result(s)")
@@ -398,7 +400,7 @@ while not proxy:
     else:
         # Failure, tag this proxy as expired.
         graspi.tprint("Registration failure, expiring that proxy")
-        graspi.expire_flood(_asa_nonce, proxy)
+        graspi.expire_flood(_asa_handle, proxy)
         proxy = None  # we'll try all over again
 
 
@@ -407,7 +409,7 @@ graspi.tprint("Success: pledge exits onboarding code")
 if len(graspi.grasp._ll_zone_ids) > 1:
     graspi.tprint("This is a relay node")
     graspi.tprint("Will launch GRASP daemon after timeouts")
-
+    graspi.deregister_asa(_asa_handle, "CASA-pledge")
     graspi.shutdown()  # close current DULL GRASP instance
     del graspi.grasp   # refresh GRASP context
     del graspi

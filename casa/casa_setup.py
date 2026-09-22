@@ -8,6 +8,7 @@
 
 # 20260901 First version
 # 20260917 Added wlabel()
+# 20260921 Switched to home directory for Linux (to avoid su)
 
 import os
 import sys
@@ -17,6 +18,7 @@ from datetime import datetime, timezone
 import json
 from base64 import b64encode as b64e
 from base64 import b64decode as b64d
+from pathlib import Path
 ##from cryptography.hazmat.primitives import hashes
 ##from cryptography.hazmat.primitives.asymmetric import padding
 ##from cryptography.hazmat.primitives.serialization import load_pem_private_key
@@ -102,7 +104,7 @@ def verify_json(cms, fpath):
 
 # OS-dependent file path
 
-env_path = "C:/ProgramData/Temp" if os.name=="nt" else "/tmp"
+env_path = "C:/ProgramData/Temp" if os.name=="nt" else str(Path.home())
 
 # shorthand for RFC8995 artefacts
 

@@ -30,9 +30,11 @@ All devices need a Python 3 environment. On Linux, `casa.py` needs root (`sudo s
 
 `casa_odevid.py` - utility functions to create and parse an ODevID.
 
-`graspi.py`, `grasp.py` and `acp.py`, Python code for [GRASP](https://www.rfc-editor.org/info/rfc8990).
+`graspi.py`, `grasp.py` and `acp.py`, Python code for [GRASP](https://www.rfc-editor.org/info/rfc8990). Possibly also `gremlina.py`.
 
 Various standard Python libraries.
+
+We assume an existing IPv6 addressing and routing setup. Any hosts that have more than one layer 2 interface will be assumed to be routers and they need to run a copy of `casa-proxy.py` and a GRASP daemon. `casa-pledge.py` transforms itself into a daemon after a successful run, or run `gremlina.py` which is a stand-alone GRASP daemon.
 
 ## Usage
 
@@ -41,7 +43,7 @@ Run `casa.py` on a central machine. The first time, it will create a file space 
 Depending on your setup, `casa.py` may need administrator/root privilege.
 
 CASA has a very simple GUI. It will offer periodically to manufacture an APADL (Agent one-time-PAD List, pronounced "a Paddle"). You will need at least one APADL, which is basically an empty USB memory stick. Theoretically, you just plug it in and CASA will do the rest. Then remove the APADL and keep it safe.
-(The APADL should be encrypted in real life.) It may be convenient to copy all 9 of the above Python files onto the stick.
+(The APADL should be encrypted in real life.) It may be convenient to copy all of the above Python files onto the stick.
 
 Run `casa-proxy.py` on relevant nodes, i.e. the routers in the
 [Autonomic Control Plane (ACP)](https://www.rfc-editor.org/info/rfc8994).
@@ -67,7 +69,7 @@ Both `casa.py` and `casa-pledge.py` include optional test modes for debugging pu
 
 ## File spaces and formats
 
-On Windows, the filespaces used are `C:ProgramData/Temp/casa` and `C:ProgramData/Temp/pledge`. On Unixish systems, they are `/tmp/casa` and `/tmp/pledge`. If you don't like those choices, you'll need to edit one line in `casa_setup.py`
+On Windows, the filespaces used are `C:ProgramData/Temp/casa` and `C:ProgramData/Temp/pledge`. On Unixish systems, they are `/casa` and `/pledge` in the user's home directory (not ideal, but it avoids most sudo). If you don't like those choices, you'll need to edit one line in `casa_setup.py`
 
 Certificates, private keys, and certificate chains are stored in PEM format as `.pem` files.
 
