@@ -17,6 +17,8 @@ of a regular IDevID.
 # 20260917 Add daemon start-up
 # 20260921 Fix bug in retry_proxy()
 # 20260922 Deregister ASA before shutdown()
+# 20261001 Deregistration now embedded in shutdown()
+#          UI question about daemon added
 
 import sys
 sys.path.insert(0, '..') # in case GRASP modules are one level up
@@ -103,6 +105,7 @@ if not os.path.exists(cert_file):
 voucher_needed = True
 quadsk_needed = True
 voucher_exists = False
+
 if os.path.exists(voucher_file):
     voucher_exists = True
     r = input("Test mode (attempt onboarding despite existing voucher) Y/N:")
@@ -114,8 +117,10 @@ if os.path.exists(quads_key_file):
         quadsk_needed = False
   
 if (not voucher_needed) and (not quadsk_needed):
+    r = input("GRASP daemon required (Y/N) ")
+    if not r.lower().startswith("y"):
         crash("Voucher and QUADS key already exist.  No action taken.")
-        
+    
 ###################################
 # acquire and parse pledge's own certificate
 ###################################
@@ -212,14 +217,19 @@ while not proxy:
         # This proxy is no good
         proxy = None
         continue
+
+    # Prepare HTTP environment
+
+    myhdrs = {"Content-Type": "application/request-cms+json"}
+    base_url = "https://["+hostz+"]:"+str(p_port)+"/.well-known/"
     
     ###################################
     # Connect to the proxy
-    ###################################
-    
-    graspi.tprint("Preparing to contact proxy")
+    ################################### 
 
     if voucher_needed:
+
+        graspi.tprint("Preparing to contact proxy")
 
         # Prepare voucher request
 
@@ -266,11 +276,6 @@ while not proxy:
 
             signed_req = sign_json(req, cert_file, key_file, fpath)
             
-            # Prepare HTTP environment
-
-            myhdrs = {"Content-Type": "application/voucher-cms+json"}
-            base_url = "https://["+hostz+"]:"+str(p_port)+"/.well-known/"
-
             #graspi.tprint("Base URL", base_url)
 
             # Issue request & process result
@@ -336,11 +341,6 @@ while not proxy:
 
             signed_req = sign_json(req, cert_file, key_file, fpath)
             
-            # Prepare HTTP environment
-
-            myhdrs = {"Content-Type": "application/request-cms+json"}
-            base_url = "https://["+hostz+"]:"+str(p_port)+"/.well-known/"
-
             #graspi.tprint("Base URL", base_url)
 
             # Issue request & process result
@@ -368,7 +368,7 @@ while not proxy:
             # Test telemetry
 
             graspi.tprint("Testing telemetry")
-            
+
             tel={
                 "version": 1,
                 "status":True,
@@ -403,14 +403,14 @@ while not proxy:
         graspi.expire_flood(_asa_handle, proxy)
         proxy = None  # we'll try all over again
 
-
-graspi.tprint("Success: pledge exits onboarding code")
+if voucher_needed or quadsk_needed:
+    graspi.tprint("Success: pledge exits onboarding code")
 
 if len(graspi.grasp._ll_zone_ids) > 1:
     graspi.tprint("This is a relay node")
     graspi.tprint("Will launch GRASP daemon after timeouts")
-    graspi.deregister_asa(_asa_handle, "CASA-pledge")
-    graspi.shutdown()  # close current DULL GRASP instance
+    #graspi.deregister_asa(_asa_handle, "CASA-pledge")
+    graspi.shutdown(_asa_handle, "CASA-pledge")  # close current DULL GRASP instance
     del graspi.grasp   # refresh GRASP context
     del graspi
     del sys.modules['grasp']

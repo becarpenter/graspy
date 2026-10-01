@@ -80,7 +80,7 @@
 ########################################################
 ########################################################"""
 
-_version = "RFC8990-BC-20260923"
+_version = "RFC8990-BC-20261001"
 
 ##########################################################
 # The following change log records significant changes,
@@ -274,6 +274,8 @@ _version = "RFC8990-BC-20260923"
 #          - update Linux path to QUADS key
 #
 # 20260923 - tweaked test mode printing in shutdown()
+#
+# 20261010 - embedded deregister_asa() in shutdown()
 ##########################################################
 
 ####################################
@@ -4839,9 +4841,12 @@ def _initialise_grasp():
     time.sleep(2) # to avoid printing glitch    
     tprint("GRASP startup function exiting")
 
-def shutdown():
+def shutdown(asa_handle, asa_name):
     """GRASP shutdown"""
     global _grasp_shutdown
+    e = deregister_asa(asa_handle,asa_name)
+    if e:
+        return(e)  # wrong ASA         
     _grasp_shutdown = True
     min_thread = 2 if "idlelib" in sys.modules else 1      
     while threading.active_count() > min_thread:
@@ -4853,6 +4858,7 @@ def shutdown():
     if not _silent:
         print("GRASP instance will exit")
         time.sleep(10)
+    return(errors.ok)
     
 
 ####################################
