@@ -52,6 +52,10 @@ enter *n* unless you know what you are doing (see graspy.pdf for more).
 
 ## Summary of update history
 
+Status on 2026-10-01
+
+Added `shutdown()`
+
 Status on 2026-09-15
 
 Removed password input option due to new QUADS handling
