@@ -3,10 +3,7 @@
 
 This folder contains a Python 3 proof of concept implementation of deploying
 MQTT as a pub/sub mechanism in an [autonomic network](https://www.rfc-editor.org/info/rfc8993).
-See
-[draft-carpenter-anima-mqtt](https://datatracker.ietf.org/doc/draft-carpenter-anima-mqtt/)
-for background.
-Readers also need to be familiar with 
+Also see 
 [GRASP](https://www.rfc-editor.org/info/rfc8990) and its [API](https://www.rfc-editor.org/info/rfc8991).
 
 Tested on Python 3.14 on Windows 11, Python 3.12 on Linux kernel 7.0.0-28, and Python 3.11 on Windows 10.
@@ -42,3 +39,9 @@ which will use the IANA-assigned TCP port for MQTT and avoid MQTT security. (The
 `Mosquitto` is also freely available for other operating systems, but this is left as an exercise for the reader.
 
 Apart from that, the programs are pure Python apps but they need a [Python GRASP environment](https://github.com/becarpenter/graspy).
+
+## Conclusion
+
+The integration of MQTT in the ANIMA/GRASP ecosystem is quite straightforward. However, MQTT is not really useful in this environment, because the requirement (as described in
+[draft-ietf-anima-grasp-distribution](https://datatracker.ietf.org/doc/draft-ietf-anima-grasp-distribution/))
+is for one-to-many information distribution and MQTT only supports a one-to-one model for any particular message.
