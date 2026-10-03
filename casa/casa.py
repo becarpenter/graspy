@@ -19,6 +19,7 @@ BRSKI registrar, based on RFC8995, RFC8366 and RFC7030.
 # 20260912 CASA does not want QUADS security
 # 20260914 Add QUADS key support
 # 20260917 Add QUADS key maker
+# 20261003 Cosmetics
 
 import os
 import sys
@@ -447,7 +448,7 @@ class EST_server(threading.Thread):
         graspi.skip_dialogue(selfing=True, be_dull=True,
                              silent=True, figging=False, quadsing=False)
         # register ASA
-        err, asa_handle = graspi.register_asa("CASA registrar")
+        err, asa_handle = graspi.register_asa(ASA_name)
         if err:
             log("GRASP ASA registration error: "+graspi.etext[err])
             raise RuntimeError("EST server early exit")
@@ -510,7 +511,8 @@ class flooder(threading.Thread):
 # Start of main code
 ###################################
 
-wlabel("CASA registrar")
+ASA_name = "CASA registrar"
+wlabel(ASA_name)
 
 # Check if vault exists
 

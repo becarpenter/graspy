@@ -15,6 +15,7 @@ It then proxies the BRSKI HTTPS/TLS/TCP transactions.
 # 20260902 First version
 # 20260912 Updated misleading comment
 # 20260917 Label window
+# 20261003 Cosmetics
 
 import sys
 sys.path.insert(0, '..') # in case graspi.py is one level up
@@ -176,14 +177,16 @@ def kill_proxies(msg):
 # Main thread starts here
 ###################################
 
+ASA_name = "CASA proxy" # Arbitrary ASA name, unique in the GRASP instance.
+
 if not "idlelib" in sys.modules:
-    sys.stdout.write(f"\x1b]2;{"CASA proxy"}\x07") #Label window
+    sys.stdout.write(f"\x1b]2;{ASA_name}\x07") #Label window
     sys.stdout.flush()
 
 # Note: silent=True would suppress all GRASP printing
 graspi.skip_dialogue(selfing=True, be_dull=True, figging=False) #, silent=True)
 
-graspi.tprint("CASA proxy is starting up.")
+graspi.tprint(ASA_name, "is starting up.")
 
 ####################################
 # Register this ASA
@@ -192,9 +195,9 @@ graspi.tprint("CASA proxy is starting up.")
 # The ASA name is arbitrary - it just needs to be
 # unique in the GRASP instance.
 
-_err,_asa_nonce = graspi.register_asa("CASA-proxy")
+_err,_asa_nonce = graspi.register_asa(ASA_name)
 if not _err:
-    graspi.tprint("ASA CASA-proxy registered OK")
+    graspi.tprint(ASA_name, "registered OK")
 else:
     graspi.tprint("ASA registration failure:",graspi.etext[_err])
     exit()

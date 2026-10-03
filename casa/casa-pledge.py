@@ -19,6 +19,7 @@ of a regular IDevID.
 # 20260922 Deregister ASA before shutdown()
 # 20261001 Deregistration now embedded in shutdown()
 #          UI question about daemon added
+# 20261003 Cosmetics
 
 import sys
 sys.path.insert(0, '..') # in case GRASP modules are one level up
@@ -82,7 +83,8 @@ def try_get(url):
 # Global setup starts here
 ###################################
 
-wlabel("CASA pledge")
+ASA_name = "CASA pledge" # Arbitrary ASA name, unique in the GRASP instance.
+wlabel(ASA_name)
 
 # set up file names
 
@@ -147,18 +149,17 @@ ok = True       # used by failure handler
 # Note: silent=True will suppress all GRASP printing
 graspi.skip_dialogue(selfing=True, be_dull=True, figging=False) #, silent=True)
 
-graspi.tprint("CASA pledge is starting up.")
+ASA_name = "CASA pledge" # Arbitrary ASA name, unique in the GRASP instance.
+
+graspi.tprint(ASA_name, "is starting up.")
 
 ####################################
 # Register this ASA
 ####################################
 
-# The ASA name is arbitrary - it just needs to be
-# unique in the GRASP instance.
-
-_err,_asa_handle = graspi.register_asa("CASA-pledge")
+_err,_asa_handle = graspi.register_asa(ASA_name)
 if not _err:
-    graspi.tprint("CASA-pledge registered OK")
+    graspi.tprint(ASA_name, "registered OK")
 else:
     graspi.tprint("ASA registration failure:",graspi.etext[_err])
     exit()
@@ -409,8 +410,7 @@ if voucher_needed or quadsk_needed:
 if len(graspi.grasp._ll_zone_ids) > 1:
     graspi.tprint("This is a relay node")
     graspi.tprint("Will launch GRASP daemon after timeouts")
-    #graspi.deregister_asa(_asa_handle, "CASA-pledge")
-    graspi.shutdown(_asa_handle, "CASA-pledge")  # close current DULL GRASP instance
+    graspi.shutdown(_asa_handle, ASA_name)  # close current DULL GRASP instance
     del graspi.grasp   # refresh GRASP context
     del graspi
     del sys.modules['grasp']
