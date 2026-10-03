@@ -1,5 +1,5 @@
 # mqtt
-## Python proof of concept for using MQTT in AMIMA GRASP context
+## Python proof of concept for using MQTT in ANIMA GRASP context
 
 This folder contains a Python 3 proof of concept implementation of deploying
 MQTT as a pub/sub mechanism in an [autonomic network](https://www.rfc-editor.org/info/rfc8993).
@@ -21,7 +21,7 @@ It's amateur code from a security point of view. DO NOT trust it in the slightes
 
 `Publisher.py` - a simple MQTT publisher that discovers the broker via GRASP and publishes a sample message formulated as a timestamped JSON management intent object
 
-`Subscriber.py` - a simple MQTT subscriber that discovers the broker via GRASP and recieves the JSON intent. 
+`Subscriber.py` - a simple MQTT subscriber that discovers the broker via GRASP and receives the JSON intent. 
 
 All devices need a Python 3 environment. The Publisher and Subscriber need the `paho-mqtt` module (version 3).
 
