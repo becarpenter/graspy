@@ -275,7 +275,7 @@ _version = "RFC8990-BC-20261001"
 #
 # 20260923 - tweaked test mode printing in shutdown()
 #
-# 20261010 - embedded deregister_asa() in shutdown()
+# 20261001 - embedded deregister_asa() in shutdown()
 ##########################################################
 
 ####################################
