@@ -13,6 +13,7 @@ announce the address and port of the MQTT broker."""
 # All rights reserved.
 
 # 20261002 First version
+# 20261006 Added exception handling
 
 import paho.mqtt.client as mqtt
 from paho.mqtt.properties import Properties
@@ -24,7 +25,7 @@ import json
 sys.path.insert(0, '..') # in case graspi.py is one level up
 import graspi
 
-TOPIC = "GRASP/test"
+TOPIC = "trial/GRASP/test"
 
 ASA_name = "Publisher" # Arbitrary ASA name, unique in the GRASP instance.
 
@@ -76,7 +77,7 @@ while True:
     else:
         if err:
             graspi.tprint("get_flood failed", graspi.etext[err])
-    time.sleep(60)
+    time.sleep(30)
 
 BROKER = str(new_broker.source.locator)
 PORT = new_broker.source.port
@@ -156,6 +157,9 @@ while True:
     )
 
     graspi.tprint("Sending:", payload)
-    result.wait_for_publish()
+    try:
+        result.wait_for_publish()
+    except Exception as e:
+        graspi.tprint("Publishing error", str(e))
 
-    time.sleep(10)
+    time.sleep(60)

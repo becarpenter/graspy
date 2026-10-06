@@ -22,6 +22,14 @@ It's amateur code from a security point of view. DO NOT trust it in the slightes
 
 All devices need a Python 3 environment. The Publisher and Subscriber need the `paho-mqtt` module (version 3).
 
+Since an MQTT message is a UTF-8 string, it's fine for JSON objects but CBOR objects would need to be base64-encoded for transmission, which is not exactly efficient.
+
+~~~
+msg = base64encode(cbor.dumps(obj_in)).decode()
+
+obj_out = cbor.loads(base64decode(msg.encode()))
+~~~
+
 _Warning_: On Linux, `apt install python3-paho-mqtt`
 installed an obsolete version (1.6.1); it was necessary to apply
 `pip3 install --upgrade --break-system-packages paho-mqtt`
@@ -42,6 +50,5 @@ Apart from that, the programs are pure Python apps but they need a [Python GRASP
 
 ## Conclusion
 
-The integration of MQTT in the ANIMA/GRASP ecosystem is quite straightforward. However, MQTT is not really useful in this environment, because the requirement (as described in
-[draft-ietf-anima-grasp-distribution](https://datatracker.ietf.org/doc/draft-ietf-anima-grasp-distribution/))
-is for one-to-many information distribution and MQTT only supports a one-to-one model for any particular message.
+The integration of MQTT in the ANIMA/GRASP ecosystem is quite straightforward. It does satisfy a simple pub/sub requirement.
+ 
