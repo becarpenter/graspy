@@ -80,7 +80,7 @@
 ########################################################
 ########################################################"""
 
-_version = "RFC8990-BC-20261001"
+_version = "RFC8990-BC-20261011"
 
 ##########################################################
 # The following change log records significant changes,
@@ -276,6 +276,8 @@ _version = "RFC8990-BC-20261001"
 # 20260923 - tweaked test mode printing in shutdown()
 #
 # 20261001 - embedded deregister_asa() in shutdown()
+#
+# 20261011 - ensure only one relay per host
 ##########################################################
 
 ####################################
@@ -702,6 +704,10 @@ _unicast_size = GRASP_DEF_MAX_SIZE
 
 _unspec_address = ipaddress.IPv6Address('::') # Used in special cases
                                               # to indicate link local
+
+_lock_port = 1439       # unused (borrowed) port number
+                        # socket object needs to be global
+_lock_sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
 
 ####################################
 # Support for flag bits            #
@@ -4535,6 +4541,8 @@ def _initialise_grasp():
     global _my_link_local
     global _session_locator
     global _ll_zone_ids
+    global _lock_port
+    global _lock_sock
     global _said_no_route
     global _mcssocks
     global _relay_needed
@@ -4794,10 +4802,15 @@ def _initialise_grasp():
 
     _relay_needed = False
     if len(_ll_zone_ids) > 1 and not DULL:
-        # start thread to relay incoming Discovery and
-        # Synchronisation multicasts
-        _relay_needed = True
-        tprint("Multicast relay needed")
+        # Can we get the relay lock?
+        try:
+            _lock_sock.bind(('::1', _lock_port))
+            # start thread to relay incoming Discovery and
+            # Synchronisation multicasts
+            _relay_needed = True
+            tprint("Multicast relay needed")
+        except:
+            tprint("Multicast relay already on")
     else:
         tprint("Multicast relay not needed")
 
