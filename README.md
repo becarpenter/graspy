@@ -14,6 +14,10 @@ the code will work on any host with Winsock2 or Posix compliant TCP/IPv6.
 When testing Autonomic Service Agents (ASAs), run each one in a separate instance of Python 3.
 You might need to be Administrator (Windows) or su (Linux).
 
+## Constrained GRASP
+
+If you are interested in [Constrained GRASP](https://datatracker.ietf.org/doc/draft-ietf-anima-constrained-grasp/), please see the repository https://github.com/vvvzhu/cGRASP.
+
 ## Startup dialogue
 
 (See *skip_dialogue()* in the documentation if you don't want this dialogue in your ASA.)
